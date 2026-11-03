@@ -82,6 +82,24 @@ const iaActiva = () => ["anthropic", "openai", "gemini"].includes(IA.proveedor) 
 const modeloIA = () => IA.modelo || MODELOS_POR_DEFECTO[IA.proveedor];
 const bloques = (m) => (typeof m.content === "string" ? [{ type: "text", text: m.content }] : m.content || []);
 
+/* Reintentos: si el proveedor está saturado (429/500/502/503/504) se espera y se reintenta;
+   si IA_MODEL_ALT está definido, el último intento usa ese modelo alterno. */
+const ESPERAS_MS = (process.env.IA_ESPERAS_MS || "2000,5000,10000").split(",").map(Number);
+const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
+const TRANSITORIOS = new Set([429, 500, 502, 503, 504]);
+async function llamarIA(req) {
+  const alterno = process.env.IA_MODEL_ALT || "";
+  let r;
+  for (let i = 0; i <= ESPERAS_MS.length; i++) {
+    const ultimo = i === ESPERAS_MS.length;
+    const pedido = ultimo && alterno && alterno !== modeloIA() ? { ...req, _modelo: alterno } : req;
+    try { r = await ADAPTADORES[IA.proveedor](pedido); } catch (e) { r = errorAnthropic(502, "No se pudo conectar con el proveedor de IA."); }
+    if (!TRANSITORIOS.has(r.status)) return r;
+    if (!ultimo) await dormir(ESPERAS_MS[i]);
+  }
+  return r;
+}
+
 async function postJSON(url, headers, body) {
   const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify(body) });
   let json = null;
@@ -94,7 +112,7 @@ const respuestaTexto = (texto) => ({ status: 200, json: { type: "message", role:
 const ADAPTADORES = {
   async anthropic(req) {
     const r = await postJSON(`${IA.baseUrl || "https://api.anthropic.com"}/v1/messages`, { "x-api-key": IA.llave, "anthropic-version": "2023-06-01" },
-      { model: modeloIA(), max_tokens: req.max_tokens || 1000, messages: req.messages });
+      { model: req._modelo || modeloIA(), max_tokens: req.max_tokens || 1000, messages: req.messages });
     return { status: r.status, json: r.json };
   },
   async openai(req) {
@@ -108,7 +126,7 @@ const ADAPTADORES = {
       }),
     }));
     const r = await postJSON(`${IA.baseUrl || "https://api.openai.com"}/v1/chat/completions`, IA.llave ? { Authorization: `Bearer ${IA.llave}` } : {},
-      { model: modeloIA(), max_completion_tokens: req.max_tokens || 1000, messages: mensajes });
+      { model: req._modelo || modeloIA(), max_completion_tokens: req.max_tokens || 1000, messages: mensajes });
     if (!r.ok) return errorAnthropic(r.status, (r.json && r.json.error && r.json.error.message) || `HTTP ${r.status}`);
     const texto = r.json && r.json.choices && r.json.choices[0] && r.json.choices[0].message ? r.json.choices[0].message.content : "";
     return respuestaTexto(texto || "");
@@ -118,7 +136,7 @@ const ADAPTADORES = {
       role: m.role === "assistant" ? "model" : "user",
       parts: bloques(m).map((b) => (b.type === "text" ? { text: b.text } : { inline_data: { mime_type: b.source.media_type, data: b.source.data } })),
     }));
-    const r = await postJSON(`${IA.baseUrl || "https://generativelanguage.googleapis.com"}/v1beta/models/${modeloIA()}:generateContent`, { "x-goog-api-key": IA.llave },
+    const r = await postJSON(`${IA.baseUrl || "https://generativelanguage.googleapis.com"}/v1beta/models/${req._modelo || modeloIA()}:generateContent`, { "x-goog-api-key": IA.llave },
       { contents: contenido, generationConfig: { maxOutputTokens: req.max_tokens || 1000 } });
     if (!r.ok) return errorAnthropic(r.status, (r.json && r.json.error && r.json.error.message) || `HTTP ${r.status}`);
     const partes = r.json && r.json.candidates && r.json.candidates[0] && r.json.candidates[0].content ? r.json.candidates[0].content.parts || [] : [];
@@ -229,7 +247,7 @@ const servidor = http.createServer(async (req, res) => {
     if (m === "GET" && ruta === "/ia/probar") {
       if (!iaActiva()) return enviar(res, 200, { ok: false, mensaje: "La IA no está configurada en el servidor (falta IA_PROVIDER e IA_API_KEY en el archivo .env)." });
       let r;
-      try { r = await ADAPTADORES[IA.proveedor]({ max_tokens: 40, messages: [{ role: "user", content: [{ type: "text", text: "Responde solo con la palabra OK." }] }] }); } catch (e) { r = errorAnthropic(502, "No se pudo conectar con el proveedor de IA."); }
+      try { r = await llamarIA({ max_tokens: 40, messages: [{ role: "user", content: [{ type: "text", text: "Responde solo con la palabra OK." }] }] }); } catch (e) { r = errorAnthropic(502, "No se pudo conectar con el proveedor de IA."); }
       if (r.status === 200 && r.json && r.json.content) return enviar(res, 200, { ok: true, proveedor: IA.proveedor, modelo: modeloIA(), respuesta: (r.json.content[0] && r.json.content[0].text || "").slice(0, 80) });
       const detalle = (r.json && r.json.error && (r.json.error.message || r.json.error)) || `HTTP ${r.status}`;
       return enviar(res, 200, { ok: false, proveedor: IA.proveedor, modelo: modeloIA(), mensaje: String(detalle).slice(0, 300) });
@@ -239,7 +257,7 @@ const servidor = http.createServer(async (req, res) => {
       const cuerpo = await leerCuerpo(req);
       if (!Array.isArray(cuerpo.messages)) return enviar(res, 400, { error: { message: "Solicitud inválida." } });
       let r;
-      try { r = await ADAPTADORES[IA.proveedor](cuerpo); } catch (e) { r = errorAnthropic(502, "No se pudo conectar con el proveedor de IA."); }
+      try { r = await llamarIA(cuerpo); } catch (e) { r = errorAnthropic(502, "No se pudo conectar con el proveedor de IA."); }
       return enviar(res, r.status, r.json || { error: { message: "Respuesta vacía del proveedor." } });
     }
 
