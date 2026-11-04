@@ -1,1 +1,12 @@
-{ "name": "gops-backend", "version": "1.0.0", "private": true, "main": "server.js", "scripts": { "start": "node server.js" } }
+{
+  "name": "gops-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "API de GOPS: sesión, datos en SQLite, respaldos e IA. Sin dependencias externas.",
+  "main": "server.js",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test.js"
+  }
+}
