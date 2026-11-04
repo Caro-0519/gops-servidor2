@@ -1,0 +1,129 @@
+openapi: 3.0.3
+info:
+  title: API de GOPS
+  version: 1.0.0
+  description: >
+    API del backend de GOPS (Gestión de OPS y Bonificaciones de Posgrados).
+    Sesión con token firmado de 12 h, datos en SQLite e IA con proveedores intercambiables.
+servers:
+  - url: http://localhost:3000
+    description: Backend en desarrollo
+  - url: https://lidis.usbcali.edu.co/gops
+    description: Servidor de la universidad (las rutas /api quedan bajo /gops/api)
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  schemas:
+    Error:
+      type: object
+      properties: { error: { type: string } }
+    Credenciales:
+      type: object
+      required: [usuario, clave]
+      properties:
+        usuario: { type: string, minLength: 3 }
+        clave: { type: string, minLength: 8 }
+    Token:
+      type: object
+      properties:
+        token: { type: string }
+        horas: { type: integer, example: 12 }
+    Valor:
+      type: object
+      required: [value]
+      properties:
+        value: { type: string, description: Documento JSON serializado como texto }
+    MensajeIA:
+      type: object
+      required: [messages]
+      properties:
+        max_tokens: { type: integer, example: 300 }
+        messages:
+          type: array
+          items:
+            type: object
+            properties:
+              role: { type: string, enum: [user, assistant] }
+              content: { type: array, items: { type: object } }
+paths:
+  /api/salud:
+    get:
+      summary: Comprueba que el servicio responde
+      responses: { "200": { description: OK, content: { application/json: { example: { ok: true } } } } }
+  /api/estado:
+    get:
+      summary: Indica si ya existe la cuenta de acceso
+      responses: { "200": { description: OK, content: { application/json: { example: { hayUsuario: false } } } } }
+  /api/configurar:
+    post:
+      summary: Crea la cuenta de acceso (solo la primera vez)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/Credenciales" } } } }
+      responses:
+        "200": { description: Cuenta creada, content: { application/json: { schema: { $ref: "#/components/schemas/Token" } } } }
+        "400": { description: Usuario o contraseña inválidos, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "409": { description: Ya hay una cuenta configurada, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /api/login:
+    post:
+      summary: Inicia sesión
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/Credenciales" } } } }
+      responses:
+        "200": { description: Sesión iniciada, content: { application/json: { schema: { $ref: "#/components/schemas/Token" } } } }
+        "401": { description: Usuario o contraseña incorrectos }
+        "429": { description: Demasiados intentos; se bloquea 5 minutos }
+  /api/cambiar-clave:
+    post:
+      summary: Cambia la contraseña
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, properties: { actual: { type: string }, nueva: { type: string, minLength: 8 } } } } }
+      responses: { "200": { description: Contraseña cambiada }, "400": { description: Datos inválidos }, "401": { description: Sin sesión } }
+  /api/storage:
+    get:
+      summary: Lista las claves guardadas
+      security: [{ bearerAuth: [] }]
+      parameters: [{ name: prefix, in: query, schema: { type: string } }]
+      responses: { "200": { description: OK, content: { application/json: { example: { keys: [ops-app-state-v1], prefix: ops } } } }, "401": { description: Sin sesión } }
+  /api/storage/{clave}:
+    parameters: [{ name: clave, in: path, required: true, schema: { type: string, maxLength: 200 } }]
+    get:
+      summary: Lee un dato guardado
+      security: [{ bearerAuth: [] }]
+      responses: { "200": { description: OK }, "401": { description: Sin sesión }, "404": { description: No existe } }
+    put:
+      summary: Crea o actualiza un dato (guarda además la copia diaria del valor anterior)
+      security: [{ bearerAuth: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/Valor" } } } }
+      responses: { "200": { description: Guardado, content: { application/json: { example: { key: ops-app-state-v1 } } } }, "400": { description: Falta el valor }, "401": { description: Sin sesión } }
+    delete:
+      summary: Borra un dato
+      security: [{ bearerAuth: [] }]
+      responses: { "200": { description: OK, content: { application/json: { example: { key: ops-app-state-v1, deleted: true } } } }, "401": { description: Sin sesión } }
+  /api/respaldo:
+    get:
+      summary: Descarga todo lo guardado en un archivo JSON
+      security: [{ bearerAuth: [] }]
+      responses: { "200": { description: Archivo gops-respaldo-AAAA-MM-DD.json }, "401": { description: Sin sesión } }
+  /api/ia/estado:
+    get:
+      summary: Proveedor y modelo de IA configurados
+      security: [{ bearerAuth: [] }]
+      responses: { "200": { description: OK, content: { application/json: { example: { activa: true, proveedor: gemini, modelo: gemini-3.7-flash } } } }, "401": { description: Sin sesión } }
+  /api/ia/probar:
+    get:
+      summary: Prueba la conexión con la IA
+      security: [{ bearerAuth: [] }]
+      responses: { "200": { description: "ok true o false con el mensaje del proveedor" }, "401": { description: Sin sesión } }
+  /api/ia:
+    post:
+      summary: Envía una consulta a la IA en formato común (el servidor la traduce al proveedor)
+      security: [{ bearerAuth: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/MensajeIA" } } } }
+      responses:
+        "200": { description: Respuesta de la IA }
+        "400": { description: Solicitud inválida }
+        "401": { description: Sin sesión }
+        "501": { description: IA no configurada en el servidor }
+        "429": { description: Proveedor de IA saturado tras los reintentos automáticos }
+        "502": { description: No se pudo conectar con el proveedor }
+        "503": { description: Proveedor de IA saturado tras los reintentos automáticos }
