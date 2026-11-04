@@ -1,0 +1,7 @@
+# Secretos y datos: nunca se suben al repositorio
+.env
+*.db
+*.db-wal
+*.db-shm
+node_modules/
+frontend/node_modules/
