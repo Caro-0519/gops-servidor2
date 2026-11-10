@@ -18,6 +18,7 @@ const FONTS = `
 `;
 
 const TOKENS = `
+input,select,textarea{box-sizing:border-box;max-width:100%}
 :root{
   --ink:#1B1740;
   --ink-2:#4F3BC4;
@@ -3170,9 +3171,9 @@ function DetailDrawer({ rec, config, programas, hallazgos = [], onIrAuditor, onC
   const [revisionAbierta, setRevisionAbierta] = useState(false);
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 60, display: "flex", justifyContent: "flex-end" }}>
+    <div style={{ position: "fixed", inset: 0, maxHeight: "100dvh", zIndex: 60, display: "flex", justifyContent: "flex-end" }}>
       <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(27,23,64,0.35)" }} />
-      <div className="font-body" style={{ position: "relative", width: 460, maxWidth: "92vw", height: "100%", background: "var(--paper)", overflowY: "auto", padding: "22px 24px 60px", borderLeft: "1px solid var(--line)" }}>
+      <div className="font-body" style={{ position: "relative", width: 460, maxWidth: "92vw", background: "var(--paper)", overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "22px 24px calc(110px + env(safe-area-inset-bottom, 0px))", borderLeft: "1px solid var(--line)" }}>
         <button onClick={onClose} style={{ position: "absolute", top: 18, right: 18, background: "var(--paper-raised)", border: "1px solid var(--line)", borderRadius: 999, width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><X size={15} /></button>
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, paddingRight: 40 }}>
