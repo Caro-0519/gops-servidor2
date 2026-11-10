@@ -121,6 +121,14 @@ const ESTADOS = {
   OPS: ["OPS Solicitada", "OPS Elaborada", "Documentos Solicitados", "Documentos Recibidos", "Visto Bueno Director/Coordinador", "Visto Bueno Decanatura", "Enviado a OPS", "Pendiente de pago", "Pagado"],
   BONIFICACION: ["Bonificación registrada", "Curso finalizado", "Visto Bueno solicitado", "Visto Bueno recibido", "Enviado para pago", "Pagado"],
 };
+// Posición de un estado en su secuencia. Tolera mayúsculas, tildes y espacios (p. ej. registros importados de Excel).
+function idxEstado(tipo, estado) {
+  const seq = ESTADOS[tipo] || [];
+  const i = seq.indexOf(estado);
+  if (i >= 0) return i;
+  const n = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase().replace(/\s+/g, " ");
+  return seq.findIndex((x) => n(x) === n(estado));
+}
 
 /* ------------------------------------------------------------------ */
 /*  CONFIGURACIÓN Y TARIFAS (editables desde Administración)           */
@@ -1319,15 +1327,15 @@ export default function App() {
     setRecords((rs) => rs.map((r) => {
       if (r.id !== recId) return r;
       const seq = ESTADOS[r.tipo];
-      const i = seq.indexOf(r.estado);
-      const next = i >= 0 && i < seq.length - 1 ? seq[i + 1] : r.estado;
+      const i = idxEstado(r.tipo, r.estado);
+      const next = i < 0 ? seq[0] : i < seq.length - 1 ? seq[i + 1] : r.estado;
       return { ...r, estado: next, _v: Date.now() };
     }));
     setSelected((s) => {
       if (!s || s.id !== recId) return s;
       const seq = ESTADOS[s.tipo];
-      const i = seq.indexOf(s.estado);
-      const next = i >= 0 && i < seq.length - 1 ? seq[i + 1] : s.estado;
+      const i = idxEstado(s.tipo, s.estado);
+      const next = i < 0 ? seq[0] : i < seq.length - 1 ? seq[i + 1] : s.estado;
       return { ...s, estado: next, _v: Date.now() };
     });
   }
@@ -1336,14 +1344,14 @@ export default function App() {
     setRecords((rs) => rs.map((r) => {
       if (r.id !== recId) return r;
       const seq = ESTADOS[r.tipo];
-      const i = seq.indexOf(r.estado);
+      const i = idxEstado(r.tipo, r.estado);
       const prev = i > 0 ? seq[i - 1] : r.estado;
       return { ...r, estado: prev, _v: Date.now() };
     }));
     setSelected((s) => {
       if (!s || s.id !== recId) return s;
       const seq = ESTADOS[s.tipo];
-      const i = seq.indexOf(s.estado);
+      const i = idxEstado(s.tipo, s.estado);
       const prev = i > 0 ? seq[i - 1] : s.estado;
       return { ...s, estado: prev, _v: Date.now() };
     });
@@ -3156,7 +3164,7 @@ function DetailDrawer({ rec, config, programas, hallazgos = [], onIrAuditor, onC
   const prog = programas.find((p) => p.sigla === rec.programa) || { sigla: rec.programa, nombre: rec.programa, tipo: "", pa: "—", cc: "—", coordinador: "—", correo: "—" };
   const u = urgencia(rec);
   const seq = ESTADOS[rec.tipo];
-  const idx = seq.indexOf(rec.estado);
+  const idx = idxEstado(rec.tipo, rec.estado);
   const liqSS = liquidacionSS(rec, config);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [revisionAbierta, setRevisionAbierta] = useState(false);
