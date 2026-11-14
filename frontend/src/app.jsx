@@ -1225,7 +1225,7 @@ export default function App() {
         }
         setDiag((d) => ({ ...d, ultimoGuardado: new Date(), storageCount: fusion.records.length, reactCount: fusion.records.length }));
       } catch (e) {
-        notify("No se pudo guardar el último cambio, revisa tu conexión");
+        notify(`${e && e.message ? e.message : "No se pudo guardar el último cambio"}. Revisa tu conexión o avisa al administrador.`);
       } finally {
         setGuardando(false);
       }
