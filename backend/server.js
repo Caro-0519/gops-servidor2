@@ -173,7 +173,8 @@ const servidor = http.createServer(async (req, res) => {
     if (m === "GET" && ruta === "/estado") return enviar(res, 200, { hayUsuario: !!usuario() });
     if (m === "POST" && ruta === "/configurar") {
       if (usuario()) return enviar(res, 409, { error: "Ya hay una cuenta configurada." });
-      const { usuario: nombre, clave } = await leerCuerpo(req);
+      const { usuario: nombre, clave, claveInstalacion } = await leerCuerpo(req);
+if (process.env.CLAVE_INSTALACION && claveInstalacion !== process.env.CLAVE_INSTALACION) return enviar(res, 403, { error: "Clave de instalación incorrecta." });
       if (!nombre || String(nombre).trim().length < 3) return enviar(res, 400, { error: "El usuario debe tener al menos 3 caracteres." });
       if (!clave || String(clave).length < 8) return enviar(res, 400, { error: "La contraseña debe tener al menos 8 caracteres." });
       db.prepare("INSERT INTO usuario (id, nombre, hash) VALUES (1, ?, ?)").run(String(nombre).trim(), hashClave(String(clave)));
