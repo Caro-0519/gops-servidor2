@@ -71,10 +71,11 @@ const est = {
   boton: { width: "100%", marginTop: 18, padding: "12px", borderRadius: 11, border: "none", background: "#4B2FB8", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" },
 };
 
-function Ingreso({ modo, onListo }) {
-  const [usuario, setUsuario] = useState("");
+function Ingreso({ modo, onListo }) {  const [usuario, setUsuario] = useState("");
   const [clave, setClave] = useState("");
   const [clave2, setClave2] = useState("");
+   const [claveInst, setClaveInst] = useState("");                                
+  const [claveInst, setClaveInst] = useState("");
   const [error, setError] = useState("");
   const [ocupado, setOcupado] = useState(false);
   const crear = modo === "crear";
@@ -85,7 +86,7 @@ function Ingreso({ modo, onListo }) {
     if (crear && clave !== clave2) { setError("Las dos contraseñas no coinciden."); return; }
     setOcupado(true);
     try {
-      const r = await api("POST", crear ? "configurar" : "login", { usuario, clave });
+      const r = await api("POST", crear ? "configurar" : "login", { usuario, clave, claveInstalacion: claveInst });
       if (r.ok) { setToken(r.json.token); onListo(); }
       else setError((r.json && r.json.error) || `No se pudo ingresar (${r.status}).`);
     } catch (err) {
@@ -114,6 +115,11 @@ function Ingreso({ modo, onListo }) {
             <input style={est.campo} type="password" value={clave2} onChange={(e) => setClave2(e.target.value)} autoComplete="new-password" />
           </label>
         )}
+           {crear && (
+     <label style={{ display: "block", marginTop: 12, fontSize: 12.5, fontWeight: 600, color: "#3B3760" }}>Clave de instalación (si el administrador del servidor la definió)
+       <input style={est.campo} type="password" value={claveInst} onChange={(e) => setClaveInst(e.target.value)} autoComplete="off" />
+     </label>
+   )}
         {error && <div style={{ marginTop: 12, fontSize: 12.5, color: "#B42318" }}>{error}</div>}
         <button type="submit" disabled={ocupado || !usuario || !clave} style={{ ...est.boton, opacity: ocupado || !usuario || !clave ? 0.6 : 1 }}>{ocupado ? "Un momento…" : crear ? "Crear cuenta y entrar" : "Entrar"}</button>
       </form>
