@@ -210,7 +210,8 @@ const servidor = http.createServer(async (req, res) => {
     }
     const mk = ruta.match(/^\/storage\/(.+)$/);
     if (mk) {
-      const key = decodeURIComponent(mk[1]);
+         let key;
+   try { key = decodeURIComponent(mk[1]); } catch (e) { return enviar(res, 400, { error: "Clave inválida." }); }
       if (key.length > 200) return enviar(res, 400, { error: "Clave demasiado larga." });
       if (m === "GET") {
         const f = db.prepare("SELECT value FROM kv WHERE key = ?").get(key);
