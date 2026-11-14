@@ -158,7 +158,7 @@ function leerCuerpo(req) {
     req.on("error", reject);
   });
 }
-const ipDe = (req) => String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",")[0].trim();
+const ipDe = (req) => String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",").pop().trim();
 const usuario = () => db.prepare("SELECT nombre, hash FROM usuario WHERE id = 1").get();
 
 /* ---------- servidor ---------- */
