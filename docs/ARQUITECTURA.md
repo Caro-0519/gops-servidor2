@@ -48,3 +48,7 @@ flowchart LR
 - Bloqueo de 5 minutos tras 5 intentos fallidos de ingreso.
 - Consultas SQL con parámetros (sin concatenar texto del usuario).
 - La IA solo recibe los hallazgos del auditor, no documentos ni correos.
+
+- ## Decisiones de arquitectura (ADR)
+- [ADR-001: JavaScript como stack único](adr/ADR-001-stack.md)
+- [ADR-002: SQLite en un volumen de Docker](adr/ADR-002-base-de-datos.md)
