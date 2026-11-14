@@ -1,8 +1,7 @@
-# Arquitectura de GOPS
+# Diagramas de arquitectura de GOPS
 
-GOPS | Gestión de OPS y Bonificaciones de Posgrados (USB Cali).
-Arquitectura cliente-servidor de tres capas, cada una en su contenedor Docker.
-La usa la Auxiliar administrativa de posgrados.
+Modelo C4 en Mermaid. GitHub los dibuja automáticamente.
+Los diagramas se verificaron contra el código (`server.js`, `app.jsx`, `entry.jsx`, `nginx.conf` y `docker-compose.yml`).
 
 ## Nivel 1: Contexto
 
@@ -23,55 +22,53 @@ flowchart LR
 ```mermaid
 flowchart LR
     U["<b>Auxiliar administrativa</b><br/>Usuaria de la aplicación"]
-    subgraph LIDIS["GOPS en servidor LIDIS (Docker)"]
-        direction LR
-        F["<b>Frontend</b><br/>React + nginx<br/>puerto 8080"]
-        B["<b>Backend</b><br/>Node.js 22<br/>puerto 3000"]
+    P["<b>Panel de LIDIS</b><br/>enruta según la URL"]
+    subgraph DOCKER["Servidor LIDIS (Docker Compose)"]
+        F["<b>Frontend</b><br/>React 18 + nginx, puerto 8080<br/>pantallas, reglas del auditor,<br/>tarifas, importar Excel (xlsx)"]
+        B["<b>Backend</b><br/>Node.js 22, puerto 3000<br/>sesión, guardado, respaldos,<br/>relé hacia la IA"]
         DB[("<b>Base de datos</b><br/>SQLite gops.db<br/>volumen gops-data")]
     end
     IA["<b>API de Gemini</b><br/>Google"]
-    U -->|"HTTPS"| F
-    F -->|"/api/*"| B
-    B -->|"lee y escribe"| DB
+    U -->|"HTTPS"| P
+    P -->|"/gops/ (HTTP)"| F
+    P -->|"/gops/api/ (HTTP)"| B
+    B -->|"SQL (node:sqlite)"| DB
     B -->|"HTTPS + llave"| IA
     style U fill:#08427b,color:#fff,stroke:#052e56
+    style P fill:#999,color:#fff,stroke:#6b6b6b
     style F fill:#438dd5,color:#fff,stroke:#2e6295
     style B fill:#438dd5,color:#fff,stroke:#2e6295
     style DB fill:#438dd5,color:#fff,stroke:#2e6295
     style IA fill:#999,color:#fff,stroke:#6b6b6b
-    style LIDIS fill:#fff,stroke:#555,stroke-dasharray:5 5
+    style DOCKER fill:#fff,stroke:#555,stroke-dasharray:5 5
 ```
 
-## Notas
-- La clave de la IA vive solo en el servidor, nunca en el navegador.
-- Los datos persisten en el volumen Docker `gops-data`, con respaldo diario y 30 días de retención.
-- Los niveles 3 y 4 de C4 (componentes y código) no se documentan: el código ya los muestra.
-## Nivel 3: Componentes (backend y frontend)
+## Nivel 3: Componentes
 
 ```mermaid
 flowchart LR
     subgraph FRONT["Frontend (React)"]
-        APP["<b>app.jsx</b><br/>Pantallas, estados de la OPS,<br/>importar, auditor, autoguardado"]
-        ENT["<b>entry.jsx</b><br/>window.storage:<br/>get, set, delete, list"]
+        APP["<b>app.jsx</b><br/>Pantallas, estados de la OPS,<br/>reglas del auditor, importar Excel,<br/>autoguardado"]
+        ENT["<b>entry.jsx</b><br/>window.storage:<br/>get, set, delete, list<br/>y descarga de respaldo"]
     end
     subgraph BACK["Backend (Node.js, server.js)"]
         AUT["<b>Autenticación</b><br/>login, cambiar-clave,<br/>scrypt + token JWT 12 h"]
         LIM["<b>Límite de intentos</b><br/>bloqueo 5 min<br/>tras 5 fallos"]
         STO["<b>Almacenamiento</b><br/>GET / PUT / DELETE<br/>/api/storage/clave"]
         RES["<b>Respaldos</b><br/>diario, 30 días<br/>GET /api/respaldo"]
-        IAC["<b>Módulo de IA</b><br/>adaptadores Gemini,<br/>Anthropic, OpenAI,<br/>con reintentos"]
+        IAC["<b>Relé de IA</b><br/>adaptadores Gemini,<br/>Anthropic, OpenAI,<br/>con reintentos"]
     end
     DB[("<b>SQLite gops.db</b><br/>kv, respaldos,<br/>usuario, meta")]
     GEM["<b>API de Gemini</b><br/>Google"]
     APP --> ENT
     ENT -->|"/api/login"| AUT
     ENT -->|"/api/storage"| STO
+    ENT -->|"/api/respaldo"| RES
+    APP -->|"/api/ia"| IAC
     AUT --> LIM
     AUT --> DB
     STO --> DB
     RES --> DB
-    ENT -->|"/api/respaldo"| RES
-    ENT -->|"/api/ia"| IAC
     IAC -->|"HTTPS + llave"| GEM
     style FRONT fill:#fff,stroke:#555,stroke-dasharray:5 5
     style BACK fill:#fff,stroke:#555,stroke-dasharray:5 5
@@ -113,3 +110,5 @@ sequenceDiagram
         A-->>U: aviso: revisa tu conexión
     end
 ```
+
+
