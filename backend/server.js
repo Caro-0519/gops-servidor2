@@ -247,7 +247,7 @@ const servidor = http.createServer(async (req, res) => {
     if (m === "GET" && ruta === "/ia/probar") {
       if (!iaActiva()) return enviar(res, 200, { ok: false, mensaje: "La IA no está configurada en el servidor (falta IA_PROVIDER e IA_API_KEY en el archivo .env)." });
       let r;
-      try { r = await llamarIA({ max_tokens: 40, messages: [{ role: "user", content: [{ type: "text", text: "Responde solo con la palabra OK." }] }] }); } catch (e) { r = errorAnthropic(502, "No se pudo conectar con el proveedor de IA."); }
+      r = await llamarIA({ max_tokens: 40, messages: [{ role: "user", content: [{ type: "text", text: "Responde solo con la palabra OK." }] }] });
       if (r.status === 200 && r.json && r.json.content) return enviar(res, 200, { ok: true, proveedor: IA.proveedor, modelo: modeloIA(), respuesta: (r.json.content[0] && r.json.content[0].text || "").slice(0, 80) });
       const detalle = (r.json && r.json.error && (r.json.error.message || r.json.error)) || `HTTP ${r.status}`;
       return enviar(res, 200, { ok: false, proveedor: IA.proveedor, modelo: modeloIA(), mensaje: String(detalle).slice(0, 300) });
@@ -257,7 +257,7 @@ const servidor = http.createServer(async (req, res) => {
       const cuerpo = await leerCuerpo(req);
       if (!Array.isArray(cuerpo.messages)) return enviar(res, 400, { error: { message: "Solicitud inválida." } });
       let r;
-      try { r = await llamarIA(cuerpo); } catch (e) { r = errorAnthropic(502, "No se pudo conectar con el proveedor de IA."); }
+      r = await llamarIA(cuerpo);
       return enviar(res, r.status, r.json || { error: { message: "Respuesta vacía del proveedor." } });
     }
 
