@@ -271,4 +271,4 @@ if (process.env.CLAVE_INSTALACION && claveInstalacion !== process.env.CLAVE_INST
   }
 });
 servidor.listen(PORT, "0.0.0.0", () => console.log(`GOPS backend en :${PORT} · IA: ${iaActiva() ? `${IA.proveedor} (${modeloIA()})` : "desactivada"}`));
-module.exports = { servidor };
+   module.exports = { servidor, hashClave, verificarClave, firmar, validarToken, ipDe };
