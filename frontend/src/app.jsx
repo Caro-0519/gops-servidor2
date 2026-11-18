@@ -379,6 +379,8 @@ function liquidarSS(ingresosMes, anio, config) {
   const ibcInicial = ingresosMes * (n.ibcPct / 100);
   const minimo = n.smmlv;
   const maximo = n.smmlv * (n.topeSmmlv || 25);
+    // Si el ingreso del mes no supera 1 SMMLV, el docente no está obligado a cotizar: no hay planilla de seguridad social.
+  if (ingresosMes <= minimo) return { anio, ibcInicial, ibc: 0, minimo, maximo, ajuste: "exento", exento: true, salud: 0, pension: 0, arl: 0, otros: 0, arlPct: 0, total: 0, norma: n };
   const ibc = Math.min(Math.max(ibcInicial, minimo), maximo);
   const ajuste = ibc > ibcInicial ? "minimo" : ibc < ibcInicial ? "maximo" : "ninguno";
   const arlPct = (n.arl || {})[config.arlClase] ?? 0;
@@ -399,6 +401,7 @@ function liquidacionSS(rec, config) {
     valorHoras, ingresosMes, meses, nMeses: meses.length,
     ibcInicial: suma("ibcInicial"), ibc: suma("ibc"),
     salud: suma("salud"), pension: suma("pension"), arl: suma("arl"), otros: suma("otros"), total: suma("total"),
+    exento: meses.every((m) => m.exento),
     ajustadoAlMinimo: meses.some((m) => m.ajuste === "minimo"),
     ajustadoAlMaximo: meses.some((m) => m.ajuste === "maximo"),
     normaNoExacta: meses.some((m) => !m.norma.exacta),
@@ -423,6 +426,7 @@ function PanelSS({ liq, config }) {
       {fila(`IBC inicial (${f.norma.ibcPct}%${liq.nMeses > 1 ? ` × ${liq.nMeses} meses` : ""})`, COP(liq.ibcInicial))}
       {fila(`SMMLV ${f.anio}${f.norma.exacta ? "" : ` (norma ${f.norma.anioNorma})`}`, COP(f.minimo), { soft: true })}
       {fila(`IBC definitivo${liq.nMeses > 1 ? ` (${liq.nMeses} meses)` : ""}`, COP(liq.ibc), { bold: true })}
+            {liq.exento && <div style={{ fontSize: 11.5, color: "var(--moss, #2f6b3f)" }}>El valor total no supera 1 SMMLV: el docente no está obligado a pagar planilla de seguridad social.</div>}
       {liq.ajustadoAlMinimo && <div style={{ fontSize: 11.5, color: "var(--gold, #8a6d1d)" }}>El 40 % queda por debajo del mínimo legal: se cotiza sobre 1 SMMLV por mes completo, sin importar las horas trabajadas.</div>}
       {liq.ajustadoAlMaximo && <div style={{ fontSize: 11.5, color: "var(--gold, #8a6d1d)" }}>El IBC se limitó al tope de {f.norma.topeSmmlv} SMMLV.</div>}
       {liq.normaNoExacta && <div style={{ fontSize: 11.5, color: "var(--brick)" }}>No hay norma configurada para el año del periodo; se usó la del año {liq.anioNorma}. Agregue el año en Administración.</div>}
@@ -550,7 +554,8 @@ function auditarRegistros(records, tarifas, programas, config) {
         "Confirme que el curso ya terminó o devuelva el registro a un estado anterior.");
     }
     if (esOps && r.documentos) {
-      const pend = Object.entries(r.documentos).filter(([, v]) => v === "Pendiente").map(([k]) => k);
+            const exentoSS = (liquidacionSS(r, config) || {}).exento; // sin obligación de planilla, no se exige la PILA
+      const pend = Object.entries(r.documentos).filter(([k, v]) => v === "Pendiente" && !(exentoSS && k === "Planilla pago PILA")).map(([k]) => k);
       if (pend.length && ESTADOS_VB_O_MAS_OPS.includes(r.estado)) {
         add(r, "avance_sin_documentos", r.estado === "Pagado" || r.estado === "Pendiente de pago" || r.estado === "Enviado a OPS" ? "alta" : "media", "Avanzó con documentos pendientes",
           `La OPS está en «${r.estado}» pero siguen pendientes: ${pend.join(", ")}.`,
