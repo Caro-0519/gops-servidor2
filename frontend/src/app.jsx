@@ -508,7 +508,8 @@ function auditarRegistros(records, tarifas, programas, config) {
       // R5. Tarifa distinta a la configurada
       // Los cursos que terminaron antes de la vigencia se pagaron con tarifas anteriores (no guardadas): no se contrastan.
       const vigente = !config.tarifasVigentesDesde || !r.fechaFin || r.fechaFin >= config.tarifasVigentesDesde;
-      if (prog && vigente) {
+            // Escalafón «Otros»: el valor hora está fuera del rango estipulado y se digita a mano, así que no es un hallazgo.
+      if (prog && vigente && r.escalafon !== "Otros") {
         const esperado = valorHoraPorCategoria(tarifas, prog.tipo, r.escalafon, r.tipo);
         if (esperado == null) {
           add(r, "tarifa_sin_configurar", "media", "No hay tarifa configurada para este docente",
@@ -576,9 +577,7 @@ function auditarRegistros(records, tarifas, programas, config) {
     if (!prog) {
       add(r, "programa_desconocido", "media", "Programa fuera del catálogo", `El programa «${r.programa || "—"}» no existe en el catálogo, así que no se puede validar la tarifa.`, "Corrija el programa o agréguelo al catálogo.");
     }
-    if (esOps && !String(r.correo || "").trim() && ESTADOS_VB_O_MAS_OPS.includes(r.estado)) {
-      add(r, "sin_correo", "baja", "Docente sin correo", `${r.docente} no tiene correo registrado y la OPS ya está avanzada.`, "Registre el correo para poder pedir documentos o formatos.");
-    }
+    
   }
   return out.sort((a, b) => AUD_SEV[a.sev].orden - AUD_SEV[b.sev].orden);
 }
