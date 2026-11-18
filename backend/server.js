@@ -158,7 +158,7 @@ function leerCuerpo(req) {
     req.on("error", reject);
   });
 }
-const ipDe = (req) => String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",")[0].trim();
+const ipDe = (req) => String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",").pop().trim();
 const usuario = () => db.prepare("SELECT nombre, hash FROM usuario WHERE id = 1").get();
 
 /* ---------- servidor ---------- */
@@ -173,7 +173,8 @@ const servidor = http.createServer(async (req, res) => {
     if (m === "GET" && ruta === "/estado") return enviar(res, 200, { hayUsuario: !!usuario() });
     if (m === "POST" && ruta === "/configurar") {
       if (usuario()) return enviar(res, 409, { error: "Ya hay una cuenta configurada." });
-      const { usuario: nombre, clave } = await leerCuerpo(req);
+      const { usuario: nombre, clave, claveInstalacion } = await leerCuerpo(req);
+if (process.env.CLAVE_INSTALACION && claveInstalacion !== process.env.CLAVE_INSTALACION) return enviar(res, 403, { error: "Clave de instalación incorrecta." });
       if (!nombre || String(nombre).trim().length < 3) return enviar(res, 400, { error: "El usuario debe tener al menos 3 caracteres." });
       if (!clave || String(clave).length < 8) return enviar(res, 400, { error: "La contraseña debe tener al menos 8 caracteres." });
       db.prepare("INSERT INTO usuario (id, nombre, hash) VALUES (1, ?, ?)").run(String(nombre).trim(), hashClave(String(clave)));
@@ -210,7 +211,8 @@ const servidor = http.createServer(async (req, res) => {
     }
     const mk = ruta.match(/^\/storage\/(.+)$/);
     if (mk) {
-      const key = decodeURIComponent(mk[1]);
+         let key;
+   try { key = decodeURIComponent(mk[1]); } catch (e) { return enviar(res, 400, { error: "Clave inválida." }); }
       if (key.length > 200) return enviar(res, 400, { error: "Clave demasiado larga." });
       if (m === "GET") {
         const f = db.prepare("SELECT value FROM kv WHERE key = ?").get(key);
@@ -247,7 +249,7 @@ const servidor = http.createServer(async (req, res) => {
     if (m === "GET" && ruta === "/ia/probar") {
       if (!iaActiva()) return enviar(res, 200, { ok: false, mensaje: "La IA no está configurada en el servidor (falta IA_PROVIDER e IA_API_KEY en el archivo .env)." });
       let r;
-      try { r = await llamarIA({ max_tokens: 40, messages: [{ role: "user", content: [{ type: "text", text: "Responde solo con la palabra OK." }] }] }); } catch (e) { r = errorAnthropic(502, "No se pudo conectar con el proveedor de IA."); }
+      r = await llamarIA({ max_tokens: 40, messages: [{ role: "user", content: [{ type: "text", text: "Responde solo con la palabra OK." }] }] });
       if (r.status === 200 && r.json && r.json.content) return enviar(res, 200, { ok: true, proveedor: IA.proveedor, modelo: modeloIA(), respuesta: (r.json.content[0] && r.json.content[0].text || "").slice(0, 80) });
       const detalle = (r.json && r.json.error && (r.json.error.message || r.json.error)) || `HTTP ${r.status}`;
       return enviar(res, 200, { ok: false, proveedor: IA.proveedor, modelo: modeloIA(), mensaje: String(detalle).slice(0, 300) });
@@ -257,7 +259,7 @@ const servidor = http.createServer(async (req, res) => {
       const cuerpo = await leerCuerpo(req);
       if (!Array.isArray(cuerpo.messages)) return enviar(res, 400, { error: { message: "Solicitud inválida." } });
       let r;
-      try { r = await llamarIA(cuerpo); } catch (e) { r = errorAnthropic(502, "No se pudo conectar con el proveedor de IA."); }
+      r = await llamarIA(cuerpo);
       return enviar(res, r.status, r.json || { error: { message: "Respuesta vacía del proveedor." } });
     }
 
@@ -269,4 +271,4 @@ const servidor = http.createServer(async (req, res) => {
   }
 });
 servidor.listen(PORT, "0.0.0.0", () => console.log(`GOPS backend en :${PORT} · IA: ${iaActiva() ? `${IA.proveedor} (${modeloIA()})` : "desactivada"}`));
-module.exports = { servidor };
+   module.exports = { servidor, hashClave, verificarClave, firmar, validarToken, ipDe };

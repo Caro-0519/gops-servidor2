@@ -1,5 +1,6 @@
 # GOPS · Gestión de OPS y Bonificaciones de Posgrados
 
+![CI](https://github.com/Caro-0519/gops-servidor2/actions/workflows/ci.yml/badge.svg?branch=desarrollo)
 Aplicación web que reemplaza el Excel con el que se gestionaban las **OPS** (órdenes de prestación de servicios) y las **bonificaciones** de los docentes de posgrado de la Universidad San Buenaventura Cali.
 Proyecto del Diplomado en Ingeniería de Software con Inteligencia Artificial, Módulo 3 (implementación incremental del MVP e integración de servicios).
 

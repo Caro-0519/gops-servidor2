@@ -18,6 +18,7 @@ const FONTS = `
 `;
 
 const TOKENS = `
+input,select,textarea{box-sizing:border-box;max-width:100%}
 :root{
   --ink:#1B1740;
   --ink-2:#4F3BC4;
@@ -121,6 +122,14 @@ const ESTADOS = {
   OPS: ["OPS Solicitada", "OPS Elaborada", "Documentos Solicitados", "Documentos Recibidos", "Visto Bueno Director/Coordinador", "Visto Bueno Decanatura", "Enviado a OPS", "Pendiente de pago", "Pagado"],
   BONIFICACION: ["Bonificación registrada", "Curso finalizado", "Visto Bueno solicitado", "Visto Bueno recibido", "Enviado para pago", "Pagado"],
 };
+// Posición de un estado en su secuencia. Tolera mayúsculas, tildes y espacios (p. ej. registros importados de Excel).
+function idxEstado(tipo, estado) {
+  const seq = ESTADOS[tipo] || [];
+  const i = seq.indexOf(estado);
+  if (i >= 0) return i;
+  const n = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase().replace(/\s+/g, " ");
+  return seq.findIndex((x) => n(x) === n(estado));
+}
 
 /* ------------------------------------------------------------------ */
 /*  CONFIGURACIÓN Y TARIFAS (editables desde Administración)           */
@@ -1216,7 +1225,7 @@ export default function App() {
         }
         setDiag((d) => ({ ...d, ultimoGuardado: new Date(), storageCount: fusion.records.length, reactCount: fusion.records.length }));
       } catch (e) {
-        notify("No se pudo guardar el último cambio, revisa tu conexión");
+        notify(`${e && e.message ? e.message : "No se pudo guardar el último cambio"}. Revisa tu conexión o avisa al administrador.`);
       } finally {
         setGuardando(false);
       }
@@ -1319,15 +1328,15 @@ export default function App() {
     setRecords((rs) => rs.map((r) => {
       if (r.id !== recId) return r;
       const seq = ESTADOS[r.tipo];
-      const i = seq.indexOf(r.estado);
-      const next = i >= 0 && i < seq.length - 1 ? seq[i + 1] : r.estado;
+      const i = idxEstado(r.tipo, r.estado);
+      const next = i < 0 ? seq[0] : i < seq.length - 1 ? seq[i + 1] : r.estado;
       return { ...r, estado: next, _v: Date.now() };
     }));
     setSelected((s) => {
       if (!s || s.id !== recId) return s;
       const seq = ESTADOS[s.tipo];
-      const i = seq.indexOf(s.estado);
-      const next = i >= 0 && i < seq.length - 1 ? seq[i + 1] : s.estado;
+      const i = idxEstado(s.tipo, s.estado);
+      const next = i < 0 ? seq[0] : i < seq.length - 1 ? seq[i + 1] : s.estado;
       return { ...s, estado: next, _v: Date.now() };
     });
   }
@@ -1336,14 +1345,14 @@ export default function App() {
     setRecords((rs) => rs.map((r) => {
       if (r.id !== recId) return r;
       const seq = ESTADOS[r.tipo];
-      const i = seq.indexOf(r.estado);
+      const i = idxEstado(r.tipo, r.estado);
       const prev = i > 0 ? seq[i - 1] : r.estado;
       return { ...r, estado: prev, _v: Date.now() };
     }));
     setSelected((s) => {
       if (!s || s.id !== recId) return s;
       const seq = ESTADOS[s.tipo];
-      const i = seq.indexOf(s.estado);
+      const i = idxEstado(s.tipo, s.estado);
       const prev = i > 0 ? seq[i - 1] : s.estado;
       return { ...s, estado: prev, _v: Date.now() };
     });
@@ -3156,15 +3165,15 @@ function DetailDrawer({ rec, config, programas, hallazgos = [], onIrAuditor, onC
   const prog = programas.find((p) => p.sigla === rec.programa) || { sigla: rec.programa, nombre: rec.programa, tipo: "", pa: "—", cc: "—", coordinador: "—", correo: "—" };
   const u = urgencia(rec);
   const seq = ESTADOS[rec.tipo];
-  const idx = seq.indexOf(rec.estado);
+  const idx = idxEstado(rec.tipo, rec.estado);
   const liqSS = liquidacionSS(rec, config);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [revisionAbierta, setRevisionAbierta] = useState(false);
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 60, display: "flex", justifyContent: "flex-end" }}>
+    <div style={{ position: "fixed", inset: 0, maxHeight: "100dvh", zIndex: 60, display: "flex", justifyContent: "flex-end" }}>
       <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(27,23,64,0.35)" }} />
-      <div className="font-body" style={{ position: "relative", width: 460, maxWidth: "92vw", height: "100%", background: "var(--paper)", overflowY: "auto", padding: "22px 24px 60px", borderLeft: "1px solid var(--line)" }}>
+      <div className="font-body" style={{ position: "relative", width: 460, maxWidth: "92vw", background: "var(--paper)", overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "22px 24px calc(110px + env(safe-area-inset-bottom, 0px))", borderLeft: "1px solid var(--line)" }}>
         <button onClick={onClose} style={{ position: "absolute", top: 18, right: 18, background: "var(--paper-raised)", border: "1px solid var(--line)", borderRadius: 999, width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><X size={15} /></button>
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, paddingRight: 40 }}>
