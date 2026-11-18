@@ -74,7 +74,6 @@ const est = {
 function Ingreso({ modo, onListo }) {  const [usuario, setUsuario] = useState("");
   const [clave, setClave] = useState("");
   const [clave2, setClave2] = useState("");
-   const [claveInst, setClaveInst] = useState("");                                
   const [claveInst, setClaveInst] = useState("");
   const [error, setError] = useState("");
   const [ocupado, setOcupado] = useState(false);
