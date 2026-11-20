@@ -45,6 +45,7 @@ const api = async (port, m, ruta, cuerpo, token) => {
   r = await api(3101, "GET", "/api/yo", null, t); chk("el primer usuario es administrador de Ingeniería", r.j.rol === "admin" && r.j.fac === "ingenieria");
   r = await api(3101, "POST", "/api/usuarios", { nombre: "decano.arq", clave: "Clave-Arq-2026", facultad: "Facultad de Arquitectura" }, t); chk("el administrador crea un usuario de otra facultad", r.s === 200 && r.j.fac === "arquitectura");
   r = await api(3101, "POST", "/api/usuarios", { nombre: "DECANO.ARQ", clave: "Clave-Arq-2026", facultad: "Arquitectura" }, t); chk("no se repiten nombres de usuario", r.s === 409);
+  r = await api(3101, "GET", "/api/ingreso/usuarios"); chk("la lista de ingreso es pública y no trae claves", r.s === 200 && r.j.usuarios.length > 0 && !JSON.stringify(r.j).includes("hash"));
   r = await api(3101, "POST", "/api/usuarios", { nombre: "color.mal", clave: "Clave-Arq-2026", facultad: "Facultad de Derecho", color: "rojo" }, t); chk("color inválido rechazado", r.s === 400);
   r = await api(3101, "POST", "/api/usuarios", { nombre: "derecho1", clave: "Clave-Dcho-2026", facultad: "Facultad de Derecho", color: "#0B5FA5" }, t); chk("la facultad nueva se crea con su color", r.s === 200 && r.j.color === "#0B5FA5");
   r = await api(3101, "POST", "/api/login", { usuario: "derecho1", clave: "Clave-Dcho-2026" }); chk("el token trae el color de la facultad", JSON.parse(Buffer.from(r.j.token.split(".")[1], "base64url")).color === "#0B5FA5");

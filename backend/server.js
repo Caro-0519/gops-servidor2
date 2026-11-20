@@ -195,6 +195,11 @@ const servidor = http.createServer(async (req, res) => {
     // públicas
     if (m === "GET" && (ruta === "/salud" || ruta === "/")) return enviar(res, 200, { ok: true });
     if (m === "GET" && ruta === "/estado") return enviar(res, 200, { hayUsuario: hayUsuarios() });
+    // Lista de usuarios activos para elegir en la pantalla de ingreso (solo nombre, facultad y color; nunca claves).
+    if (m === "GET" && ruta === "/ingreso/usuarios") {
+      const filas = db.prepare("SELECT nombre, facultad, fac, rol FROM usuarios WHERE activo = 1 ORDER BY facultad, nombre").all();
+      return enviar(res, 200, { usuarios: filas.map((u) => ({ nombre: u.nombre, facultad: u.facultad, rol: u.rol, color: colorDe(u.fac) })) });
+    }
     if (m === "POST" && ruta === "/configurar") {
       if (hayUsuarios()) return enviar(res, 409, { error: "Ya hay una cuenta configurada." });
       const { usuario: nombre, clave, claveInstalacion } = await leerCuerpo(req);

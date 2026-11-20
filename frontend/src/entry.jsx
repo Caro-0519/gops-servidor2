@@ -104,6 +104,15 @@ function Ingreso({ modo, onListo }) {  const [usuario, setUsuario] = useState(""
   const [error, setError] = useState("");
   const [ocupado, setOcupado] = useState(false);
   const crear = modo === "crear";
+  const [lista, setLista] = useState([]);
+  useEffect(() => {
+    if (crear) return;
+    api("GET", "ingreso/usuarios").then((r) => {
+      if (!r.ok || !r.json) return;
+      setLista(r.json.usuarios || []);
+      try { const ult = localStorage.getItem("gops:ultimo-usuario"); if (ult) setUsuario(ult); } catch (e) { /* sin almacenamiento */ }
+    }).catch(() => {});
+  }, []);
 
   async function enviar(e) {
     e.preventDefault();
@@ -118,7 +127,7 @@ function Ingreso({ modo, onListo }) {  const [usuario, setUsuario] = useState(""
     setOcupado(true);
     try {
       const r = await api("POST", crear ? "configurar" : "login", { usuario, clave, claveInstalacion: claveInst });
-      if (r.ok) { setToken(r.json.token); onListo(); }
+      if (r.ok) { setToken(r.json.token); try { localStorage.setItem("gops:ultimo-usuario", usuario); } catch (e) { /* sin almacenamiento */ } onListo(); }
       else setError((r.json && r.json.error) || `No se pudo ingresar (${r.status}).`);
     } catch (err) {
       setError("No se pudo conectar con el servidor. Inténtalo de nuevo en un momento.");
@@ -135,6 +144,22 @@ function Ingreso({ modo, onListo }) {  const [usuario, setUsuario] = useState(""
       <form onSubmit={enviar} style={est.tarjeta}>
         <div style={{ fontSize: 15, fontWeight: 700, color: "#1B1740" }}>{crear ? "Crea tu cuenta de acceso" : "Iniciar sesión"}</div>
         {crear && <div style={{ fontSize: 12.5, color: "#5A5678", marginTop: 4 }}>Es la primera vez que se abre GOPS en este servidor. Elige un usuario y una contraseña de al menos 8 caracteres.</div>}
+        {!crear && lista.length > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: "#3B3760", marginBottom: 6 }}>¿Quién ingresa?</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {lista.map((u) => {
+                const sel = usuario === u.nombre;
+                return (
+                  <button type="button" key={u.nombre} onClick={() => setUsuario(u.nombre)} style={{ display: "flex", alignItems: "center", gap: 10, textAlign: "left", padding: "8px 10px", borderRadius: 10, border: sel ? "2px solid #EB8600" : "1px solid #CFCBE3", background: sel ? "#FDF0DC" : "#fff", cursor: "pointer", fontFamily: "inherit" }}>
+                    <span style={{ width: 14, height: 14, borderRadius: 999, background: u.color, flexShrink: 0 }} />
+                    <span style={{ minWidth: 0 }}><b style={{ fontSize: 13.5, color: "#1A171B" }}>{u.nombre}</b><br /><span style={{ fontSize: 11.5, color: "#5A5678" }}>{u.facultad}{u.rol === "admin" ? " · administrador" : ""}</span></span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
         <label style={{ display: "block", marginTop: 14, fontSize: 12.5, fontWeight: 600, color: "#3B3760" }}>Usuario
           <input style={est.campo} value={usuario} onChange={(e) => setUsuario(e.target.value)} autoComplete="username" autoFocus />
         </label>
