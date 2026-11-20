@@ -108,6 +108,12 @@ function Ingreso({ modo, onListo }) {  const [usuario, setUsuario] = useState(""
   async function enviar(e) {
     e.preventDefault();
     setError("");
+    // El autocompletado del navegador a veces no avisa a React: se leen los valores directamente del formulario.
+    const campos = e.currentTarget.querySelectorAll("input");
+    const usuario = (campos[0] && campos[0].value) || "", clave = (campos[1] && campos[1].value) || "";
+    const clave2 = crear && campos[2] ? campos[2].value : "";
+    const claveInst = crear && campos[3] ? campos[3].value : "";
+    if (!usuario || !clave) { setError("Escribe tu usuario y tu contraseña."); return; }
     if (crear && clave !== clave2) { setError("Las dos contraseñas no coinciden."); return; }
     setOcupado(true);
     try {
@@ -146,7 +152,7 @@ function Ingreso({ modo, onListo }) {  const [usuario, setUsuario] = useState(""
      </label>
    )}
         {error && <div style={{ marginTop: 12, fontSize: 12.5, color: "#B42318" }}>{error}</div>}
-        <button type="submit" disabled={ocupado || !usuario || !clave} style={{ ...est.boton, opacity: ocupado || !usuario || !clave ? 0.6 : 1 }}>{ocupado ? "Un momento…" : crear ? "Crear cuenta y entrar" : "Entrar"}</button>
+        <button type="submit" disabled={ocupado} style={{ ...est.boton, opacity: ocupado ? 0.6 : 1 }}>{ocupado ? "Un momento…" : crear ? "Crear cuenta y entrar" : "Entrar"}</button>
       </form>
     </div>
   );
