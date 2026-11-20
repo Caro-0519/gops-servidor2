@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import * as XLSX from "xlsx";
+import { generarFormatoBonificacion } from "./formatoBonificacion.js";
 import {
   LayoutDashboard, Table2, GraduationCap, Plus, Search, X, Mail,
   AlertTriangle, Clock, CheckCircle2, ChevronRight, FileWarning,
@@ -797,6 +798,9 @@ function tareaSugerida(rec) {
   return null;
 }
 
+// Abre el mensaje en Outlook web (Microsoft 365) cuando no hay Outlook de escritorio.
+const outlookWebUrl = (d) => `https://outlook.office.com/mail/deeplink/compose?to=${encodeURIComponent(d.para || "")}&subject=${encodeURIComponent(d.asunto || "")}&body=${encodeURIComponent(d.cuerpo || "")}`;
+
 function emailTemplate(rec, config, programas = PROGRAMAS_DEFAULT) {
   const prog = programas.find((p) => p.sigla === rec.programa) || { sigla: rec.programa, nombre: rec.programa, tipo: "", pa: "—", cc: "—", coordinador: "—", correo: "—" };
   const vars = {
@@ -1531,6 +1535,8 @@ ${config.usuarioActual}`;
           onRetroceder={retrocederEstado}
           onEdit={(rec) => { setSelected(null); setEmailDraft(null); setEditing(rec); }}
           onDelete={deleteRecord}
+          onGuardarFormato={(id, d) => setRecords((rs) => rs.map((r) => r.id === id ? { ...r, identificacion: d.identificacion || r.identificacion || "", formatoBon: d, _v: Date.now() } : r))}
+          notify={notify}
           emailDraft={emailDraft}
           setEmailDraft={setEmailDraft}
           onSend={() => { notify("Se intentó abrir tu app de correo"); setEmailDraft(null); }}
@@ -2649,6 +2655,13 @@ function fechaDeCelda(v) {
   return aFecha(v);
 }
 
+// Identificación del docente: acepta texto o número (sin decimales ni espacios sobrantes).
+function idDeCelda(v) {
+  if (v == null) return "";
+  if (typeof v === "number") return Number.isFinite(v) ? String(Math.round(v)) : "";
+  return String(v).trim().replace(/\.0+$/, "");
+}
+
 function categoriaDeProgramacion(txt) {
   return normalizarCategoria(txt);
 }
@@ -2678,6 +2691,7 @@ function parsearProgramacion(wb, nombreArchivo, programas, records, tarifas, usu
       categoria: col("CATEGORIA"), pago: col("PAGO"), valor: col("VALOR HORA"),
       horasBonif: col("HORAS PAGAR BONIFICACION"), horasOps: col("HORAS PAGAR OPS"),
       carga: col("CARGA DE TRABAJO"),
+      ident: col("ID O DOCUMENTO", "DOCUMENTO DOCENTE", "ID DOCENTE"),
     };
     const cSi = c.pago >= 0 ? sub.findIndex((x, i) => i >= c.pago && x === "SI") : -1;
     const cNo = c.pago >= 0 ? sub.findIndex((x, i) => i >= c.pago && x === "NO") : -1;
@@ -2686,10 +2700,12 @@ function parsearProgramacion(wb, nombreArchivo, programas, records, tarifas, usu
 
     // Correo y teléfono de docentes que ya están registrados, y la categoría con la que ya figuran
     const contactos = new Map();
+    const identificaciones = new Map();
     const categoriasConocidas = new Map();
     records.forEach((r) => {
       const k = normTexto(r.docente);
       if (k && !contactos.has(k) && (r.correo || r.telefono)) contactos.set(k, { correo: r.correo || "", telefono: r.telefono || "" });
+      if (k && !identificaciones.has(k) && r.identificacion) identificaciones.set(k, String(r.identificacion));
       const cat = normalizarCategoria(r.escalafon);
       if (k && cat && !categoriasConocidas.has(k)) categoriasConocidas.set(k, cat);
     });
@@ -2770,6 +2786,7 @@ function parsearProgramacion(wb, nombreArchivo, programas, records, tarifas, usu
       if (!escalafon) escalafon = "Otros";
 
       const contacto = contactos.get(normTexto(docente)) || { correo: "", telefono: "" };
+      const identificacion = idDeCelda(c.ident >= 0 ? f[c.ident] : null) || identificaciones.get(normTexto(docente)) || "";
       const dup = records.some((r) => normTexto(r.modulo) === normTexto(modulo) && normTexto(r.docente) === normTexto(docente) && r.fechaInicio === fechaInicio);
       if (dup) advertencias.push("Fila duplicada (ya existe en la tabla)");
 
@@ -2785,6 +2802,7 @@ function parsearProgramacion(wb, nombreArchivo, programas, records, tarifas, usu
           docente,
           correo: contacto.correo,
           telefono: contacto.telefono,
+          identificacion,
           horas: horasFinal,
           fechaInicio,
           fechaFin,
@@ -3023,6 +3041,7 @@ function ImportarView({ records, setRecords, config, tarifas, programas, notify 
         "Ciclo / Sem": r.ciclo,
         "Módulo o materia": r.modulo,
         Docente: r.docente,
+        "ID o documento docente": r.identificacion || "",
         Correo: r.correo,
         Horas: r.horas,
         "Fecha inicio": r.fechaInicio,
@@ -3165,7 +3184,73 @@ function ImportarView({ records, setRecords, config, tarifas, programas, notify 
 /* ------------------------------------------------------------------ */
 /*  DETAIL DRAWER                                                       */
 /* ------------------------------------------------------------------ */
-function DetailDrawer({ rec, config, programas, hallazgos = [], onIrAuditor, onClose, onUpdateDoc, onAdvance, onRetroceder, onEdit, onDelete, emailDraft, setEmailDraft, onSend, onDraft, onCopy }) {
+// Descarga el formato de bonificación PA.GH.F40 diligenciado; el docente solo agrega su firma.
+const FORMATO_BON_DEFECTO = { cargo: "Docente", dedicacion: "HC" };
+const UNIDAD_ADSCRITA = "Facultad de Ingeniería";
+function FormatoBonificacionModal({ rec, prog, onClose, onGuardar, notify }) {
+  const guardado = rec.formatoBon || {};
+  let recordados = {};
+  try { recordados = JSON.parse(localStorage.getItem("gops-formato-bon") || "{}"); } catch (e) { /* sin almacenamiento */ }
+  const [f, setF] = useState({
+    identificacion: guardado.identificacion || rec.identificacion || "",
+    cargo: guardado.cargo || recordados.cargo || FORMATO_BON_DEFECTO.cargo,
+    dedicacion: guardado.dedicacion || recordados.dedicacion || FORMATO_BON_DEFECTO.dedicacion,
+    observaciones: guardado.observaciones != null ? guardado.observaciones : [rec.cohorte ? `Cohorte ${rec.cohorte}` : "", rec.ciclo ? `Ciclo ${rec.ciclo}` : ""].filter(Boolean).join(" · "),
+  });
+  const [generando, setGenerando] = useState(false);
+  const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
+  async function descargar() {
+    setGenerando(true);
+    try {
+      const blob = await generarFormatoBonificacion({
+        nombre: rec.docente, identificacion: f.identificacion, cargo: f.cargo, dedicacion: f.dedicacion,
+        programa: rec.nombrePrograma || prog.nombre, unidad: UNIDAD_ADSCRITA, centroCostos: prog.cc && prog.cc !== "—" ? prog.cc : "",
+        modulo: rec.modulo, horas: rec.horas, valorHora: rec.valorHora, fechaInicio: rec.fechaInicio, fechaFin: rec.fechaFin, observaciones: f.observaciones,
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Formato-Bonificacion-${String(rec.docente || "docente").replace(/[^\p{L}\p{N}]+/gu, "-")}.xlsx`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      onGuardar(rec.id, f);
+      try { localStorage.setItem("gops-formato-bon", JSON.stringify({ cargo: f.cargo, dedicacion: f.dedicacion })); } catch (e) { /* sin almacenamiento */ }
+      notify("Formato descargado: falta la firma del docente");
+      onClose();
+    } catch (e) {
+      notify("No se pudo generar el formato: " + (e.message || e));
+    } finally { setGenerando(false); }
+  }
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 80, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(27,23,64,0.45)" }} />
+      <div className="font-body" style={{ position: "relative", width: 480, maxWidth: "100%", maxHeight: "92dvh", overflowY: "auto", background: "var(--paper)", borderRadius: 14, padding: 20, border: "1px solid var(--line)" }}>
+        <div className="font-display" style={{ fontSize: 18, fontWeight: 600 }}>Formato de bonificación</div>
+        <div style={{ fontSize: 12.5, color: "var(--ink-soft)", marginTop: 2 }}>{rec.docente} · {rec.modulo}</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 14 }}>
+          <Labeled label="No. de identificación del docente" span2><input value={f.identificacion} onChange={set("identificacion")} placeholder="Cédula" style={inputStyle} /></Labeled>
+          <Labeled label="Cargo"><input value={f.cargo} onChange={set("cargo")} style={inputStyle} /></Labeled>
+          <Labeled label="Dedicación">
+            <select value={f.dedicacion} onChange={set("dedicacion")} style={inputStyle}>
+              <option value="TC">TC · Tiempo completo</option><option value="MT">MT · Medio tiempo</option><option value="HC">HC · Hora cátedra</option><option value="ADTVO">ADTVO · Administrativo</option>
+            </select>
+          </Labeled>
+          <Labeled label="Observaciones" span2><textarea value={f.observaciones} onChange={set("observaciones")} rows={2} style={{ ...inputStyle, resize: "vertical" }} /></Labeled>
+        </div>
+        <div style={{ marginTop: 12, fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.5, background: "var(--paper-raised)", border: "1px solid var(--line)", borderRadius: 10, padding: 10 }}>
+          Se llenan solos: unidad adscrita (Facultad de Ingeniería), programa ({rec.nombrePrograma || prog.nombre}), centro de costos ({prog.cc && prog.cc !== "—" ? prog.cc : "sin definir"}), módulo, {rec.horas} horas, valor hora {COP(rec.valorHora)}, valor de la bonificación {COP(valorTotal(rec))} y fechas.
+        </div>
+        {!f.identificacion.trim() && <div style={{ marginTop: 8, fontSize: 12, color: "var(--brick)" }}>Falta la cédula: el formato saldrá con ese campo en blanco.</div>}
+        <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+          <button onClick={descargar} disabled={generando} style={{ flex: 1, background: "var(--gold)", color: "#fff", border: "none", borderRadius: 8, padding: "9px 12px", fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}><Download size={14} /> {generando ? "Generando…" : "Descargar Excel"}</button>
+          <button onClick={onClose} style={{ background: "var(--paper-raised)", border: "1px solid var(--line-strong)", borderRadius: 8, padding: "9px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Cancelar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DetailDrawer({ rec, config, programas, hallazgos = [], onIrAuditor, onClose, onUpdateDoc, onAdvance, onRetroceder, onEdit, onDelete, onGuardarFormato, notify, emailDraft, setEmailDraft, onSend, onDraft, onCopy }) {
   const prog = programas.find((p) => p.sigla === rec.programa) || { sigla: rec.programa, nombre: rec.programa, tipo: "", pa: "—", cc: "—", coordinador: "—", correo: "—" };
   const u = urgencia(rec);
   const seq = ESTADOS[rec.tipo];
@@ -3173,6 +3258,7 @@ function DetailDrawer({ rec, config, programas, hallazgos = [], onIrAuditor, onC
   const liqSS = liquidacionSS(rec, config);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [revisionAbierta, setRevisionAbierta] = useState(false);
+  const [formatoAbierto, setFormatoAbierto] = useState(false);
 
   return (
     <div style={{ position: "fixed", inset: 0, maxHeight: "100dvh", zIndex: 60, display: "flex", justifyContent: "flex-end" }}>
@@ -3208,10 +3294,20 @@ function DetailDrawer({ rec, config, programas, hallazgos = [], onIrAuditor, onC
           <Field label="Escalafón" value={rec.escalafon} />
           <Field label="Fecha inicio" value={fmtDate(rec.fechaInicio)} />
           <Field label="Fecha fin" value={fmtDate(rec.fechaFin)} />
+          <Field label="ID o documento docente" value={rec.identificacion || "—"} span2 />
           <Field label="Horas" value={rec.horas} />
           <Field label="Valor hora" value={COP(rec.valorHora)} />
           <Field label="Valor total" value={COP(valorTotal(rec))} mono />
           <Field label="Coordinador" value={prog.coordinador} span2 />
+          {rec.tipo === "BONIFICACION" && (
+            <div style={{ gridColumn: "1 / -1", background: "var(--gold-soft)", border: "1px solid var(--gold)", borderRadius: 10, padding: 12 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--gold)", marginBottom: 4 }}>Formato de bonificación (PA.GH.F40)</div>
+              <div style={{ fontSize: 12, color: "var(--ink-soft)", marginBottom: 8 }}>Se descarga en Excel con los datos de este registro. El docente solo debe agregar su firma.</div>
+              <button onClick={() => setFormatoAbierto(true)} style={{ display: "flex", alignItems: "center", gap: 7, border: "1px solid var(--gold)", background: "var(--paper-raised)", color: "var(--gold)", borderRadius: 8, padding: "8px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
+                <FileSpreadsheet size={14} /> Descargar formato diligenciado
+              </button>
+            </div>
+          )}
           {rec.tipo === "OPS" && (
             <div style={{ gridColumn: "1 / -1", background: "var(--paper-raised)", border: "1px solid var(--line)", borderRadius: 10, padding: 12 }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-soft)", marginBottom: 6 }}>Seguridad social (mes completo)</div>
@@ -3221,6 +3317,7 @@ function DetailDrawer({ rec, config, programas, hallazgos = [], onIrAuditor, onC
         </div>
 
         <AvisoAuditoria hallazgos={hallazgos} onIr={onIrAuditor} />
+        {formatoAbierto && <FormatoBonificacionModal rec={rec} prog={prog} onClose={() => setFormatoAbierto(false)} onGuardar={onGuardarFormato} notify={notify} />}
 
         {/* ESTADO STEPPER */}
         <div style={{ marginTop: 22 }}>
@@ -3300,11 +3397,15 @@ function DetailDrawer({ rec, config, programas, hallazgos = [], onIrAuditor, onC
               </div>
               <input value={emailDraft.asunto} onChange={(e) => setEmailDraft({ ...emailDraft, asunto: e.target.value })} className="font-body" style={{ fontSize: 12.5, fontWeight: 600, border: "1px solid var(--line)", borderRadius: 6, padding: "6px 8px" }} />
               <textarea value={emailDraft.cuerpo} onChange={(e) => setEmailDraft({ ...emailDraft, cuerpo: e.target.value })} rows={10} className="font-body" style={{ fontSize: 12, border: "1px solid var(--line)", borderRadius: 6, padding: 8, resize: "vertical" }} />
-              <div style={{ fontSize: 11, color: "var(--ink-soft)" }}>"Enviar correo" intenta abrir tu app de correo. Si no pasa nada (común dentro de la app de Claude en el celular), usa "Copiar mensaje" — y si tampoco copia solo, mantén presionado el texto de arriba para seleccionarlo y copiarlo a mano.</div>
+              <div style={{ fontSize: 11, color: "var(--ink-soft)" }}>"Enviar correo" abre Outlook de escritorio; si no lo tienes, usa "Outlook web" para redactarlo en el navegador. Si tampoco funciona, usa "Copiar mensaje" — y si tampoco copia solo, mantén presionado el texto de arriba para seleccionarlo y copiarlo a mano.</div>
               <div style={{ display: "flex", gap: 8 }}>
                 <a href={`mailto:${encodeURIComponent(emailDraft.para)}?subject=${encodeURIComponent(emailDraft.asunto)}&body=${encodeURIComponent(emailDraft.cuerpo)}`} onClick={onSend}
                   style={{ flex: 1, background: "var(--moss)", color: "#fff", border: "none", borderRadius: 7, padding: "8px 10px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", textAlign: "center", textDecoration: "none", display: "inline-block" }}>
                   Enviar correo
+                </a>
+                <a href={outlookWebUrl(emailDraft)} target="_blank" rel="noopener noreferrer"
+                  style={{ flex: 1, background: "#0F6CBD", color: "#fff", border: "none", borderRadius: 7, padding: "8px 10px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", textAlign: "center", textDecoration: "none", display: "inline-block" }}>
+                  Outlook web
                 </a>
                 <button onClick={async () => {
                   const texto = `Para: ${emailDraft.para}\nAsunto: ${emailDraft.asunto}\n\n${emailDraft.cuerpo}`;
@@ -3716,11 +3817,15 @@ function MasivoModal({ draft, setDraft, onClose, onSend, onCopy }) {
         <div style={{ fontSize: 11.5, color: "var(--ink-soft)", marginBottom: 10 }}>Para: {draft.para}</div>
         <input value={draft.asunto} onChange={(e) => setDraft({ ...draft, asunto: e.target.value })} className="font-body" style={{ width: "100%", fontSize: 13, fontWeight: 600, border: "1px solid var(--line-strong)", borderRadius: 8, padding: "8px 10px", marginBottom: 10 }} />
         <textarea value={draft.cuerpo} onChange={(e) => setDraft({ ...draft, cuerpo: e.target.value })} rows={14} className="font-mono" style={{ width: "100%", fontSize: 12, border: "1px solid var(--line-strong)", borderRadius: 8, padding: 10, resize: "vertical" }} />
-        <div style={{ fontSize: 11, color: "var(--ink-soft)", margin: "8px 0" }}>Puedes editar la lista antes de enviarlo. "Enviar correo" intenta abrir tu app de correo; si no pasa nada, usa "Copiar mensaje" y pégalo tú mismo.</div>
+        <div style={{ fontSize: 11, color: "var(--ink-soft)", margin: "8px 0" }}>Puedes editar la lista antes de enviarlo. "Enviar correo" abre Outlook de escritorio; si no lo tienes, usa "Outlook web". Si tampoco funciona, usa "Copiar mensaje" y pégalo tú mismo.</div>
         <div style={{ display: "flex", gap: 8 }}>
           <a href={`mailto:${encodeURIComponent(draft.para)}?subject=${encodeURIComponent(draft.asunto)}&body=${encodeURIComponent(draft.cuerpo)}`} onClick={onSend}
             style={{ flex: 1, background: "var(--moss)", color: "#fff", border: "none", borderRadius: 8, padding: "10px 12px", fontSize: 13, fontWeight: 700, cursor: "pointer", textAlign: "center", textDecoration: "none", display: "inline-block" }}>
             Enviar correo
+          </a>
+          <a href={outlookWebUrl(draft)} target="_blank" rel="noopener noreferrer"
+            style={{ flex: 1, background: "#0F6CBD", color: "#fff", border: "none", borderRadius: 8, padding: "10px 12px", fontSize: 13, fontWeight: 700, cursor: "pointer", textAlign: "center", textDecoration: "none", display: "inline-block" }}>
+            Outlook web
           </a>
           <button onClick={async () => {
             const texto = `Para: ${draft.para}\nAsunto: ${draft.asunto}\n\n${draft.cuerpo}`;
@@ -3751,9 +3856,9 @@ function RecordModal({ config, tarifas, programas, record, onClose, onSave, onDe
   const editando = !!record;
   const [form, setForm] = useState(() => record ? {
     tipo: record.tipo, programa: record.programa, nombrePrograma: record.nombrePrograma || "", noOPS: record.noOPS || "", cohorte: record.cohorte || "", ciclo: record.ciclo || "",
-    modulo: record.modulo, docente: record.docente, correo: record.correo || "", horas: String(record.horas),
+    modulo: record.modulo, docente: record.docente, identificacion: record.identificacion || "", correo: record.correo || "", horas: String(record.horas),
     escalafon: record.escalafon || "Maestría", fechaInicio: record.fechaInicio, fechaFin: record.fechaFin, valorHoraManual: String(record.valorHora),
-  } : { tipo: "OPS", programa: programas[0]?.sigla || "", nombrePrograma: "", noOPS: "", cohorte: "", ciclo: "", modulo: "", docente: "", correo: "", horas: "", escalafon: "Maestría", fechaInicio: "", fechaFin: "", valorHoraManual: "" });
+  } : { tipo: "OPS", programa: programas[0]?.sigla || "", nombrePrograma: "", noOPS: "", cohorte: "", ciclo: "", modulo: "", docente: "", identificacion: "", correo: "", horas: "", escalafon: "Maestría", fechaInicio: "", fechaFin: "", valorHoraManual: "" });
   const [confirmDelete, setConfirmDelete] = useState(false);
   const prog = programas.find((p) => p.sigla === form.programa) || { sigla: "", nombre: "(agrega un programa primero)", tipo: NIVELES_ACADEMICOS[0], pa: "—", cc: "—", coordinador: "—", correo: "—" };
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
@@ -3857,6 +3962,7 @@ function RecordModal({ config, tarifas, programas, record, onClose, onSave, onDe
           <Labeled label="Ciclo / Semestre"><input value={form.ciclo} onChange={set("ciclo")} style={inputStyle} /></Labeled>
           <Labeled label="Módulo / materia" span2><input value={form.modulo} onChange={set("modulo")} style={inputStyle} /></Labeled>
           <Labeled label="Docente"><input value={form.docente} onChange={set("docente")} style={inputStyle} /></Labeled>
+          <Labeled label="ID o documento del docente"><input value={form.identificacion} onChange={set("identificacion")} placeholder="Cédula" style={inputStyle} /></Labeled>
           <Labeled label="Correo"><input value={form.correo} onChange={set("correo")} style={inputStyle} /></Labeled>
           <Labeled label="Horas"><input type="number" value={form.horas} onChange={set("horas")} style={inputStyle} /></Labeled>
           <Labeled label="Escalafón / Categoría">
