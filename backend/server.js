@@ -1,7 +1,10 @@
 "use strict";
 /* GOPS · backend. Sin dependencias externas (solo módulos incluidos en Node 22).
    - Datos: SQLite en /data/gops.db (volumen de Docker).
-   - Sesión: usuario único con contraseña cifrada (scrypt) y token firmado (HMAC-SHA256) de 12 h.
+   - Sesión: usuarios con contraseña cifrada (scrypt) y token firmado (HMAC-SHA256) de 12 h.
+   - Facultades: cada usuario pertenece a una facultad y solo ve los datos de la suya. Los datos de la facultad
+     original ("ingenieria") conservan sus claves; las demás se guardan con el prefijo "fac:<facultad>:".
+     El primer usuario (el que crea la cuenta) es el administrador y puede crear usuarios de otras facultades.
    - IA: adaptadores intercambiables (anthropic | openai | gemini) elegidos por variables de entorno.
    Las rutas llegan sin el prefijo /gops; se aceptan con o sin el prefijo /api. */
 const http = require("http");
@@ -22,7 +25,22 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS respaldos (dia TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY (dia, key));
   CREATE TABLE IF NOT EXISTS usuario (id INTEGER PRIMARY KEY CHECK (id = 1), nombre TEXT NOT NULL, hash TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS usuarios (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT NOT NULL UNIQUE COLLATE NOCASE, hash TEXT NOT NULL,
+    rol TEXT NOT NULL DEFAULT 'facultad', fac TEXT NOT NULL, facultad TEXT NOT NULL, activo INTEGER NOT NULL DEFAULT 1, creado TEXT NOT NULL
+  );
 `);
+const FAC_ORIGINAL = "ingenieria";
+const NOMBRE_FAC_ORIGINAL = "Facultad de Ingeniería";
+// Migración: la cuenta única anterior pasa a ser el administrador de la facultad original (la tabla vieja no se borra)
+if (!db.prepare("SELECT 1 FROM usuarios LIMIT 1").get()) {
+  const vieja = db.prepare("SELECT nombre, hash FROM usuario WHERE id = 1").get();
+  if (vieja) db.prepare("INSERT INTO usuarios (nombre, hash, rol, fac, facultad, creado) VALUES (?, ?, 'admin', ?, ?, ?)").run(vieja.nombre, vieja.hash, FAC_ORIGINAL, NOMBRE_FAC_ORIGINAL, new Date().toISOString());
+}
+// Color de cada facultad (la identidad de la universidad es negro y naranja; Ingeniería usa morado)
+const COLOR_HEX = /^#[0-9a-fA-F]{6}$/;
+const colorDe = (fac) => meta(`fac-color:${fac}`) || (fac === FAC_ORIGINAL ? "#4B2FB8" : "#1A171B");
+const slugFacultad = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/^facultad\s+de\s+(la\s+|los\s+|las\s+)?/, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
 /* ---------- secretos y contraseñas ---------- */
 function meta(k) { const r = db.prepare("SELECT v FROM meta WHERE k = ?").get(k); return r ? r.v : null; }
@@ -58,7 +76,7 @@ function validarToken(token) {
     return payload.exp * 1000 > Date.now() ? payload : null;
   } catch (e) { return null; }
 }
-const emitirToken = (nombre) => ({ token: firmar({ sub: nombre, exp: Math.floor(Date.now() / 1000) + TOKEN_HORAS * 3600 }), horas: TOKEN_HORAS });
+const emitirToken = (u) => ({ token: firmar({ sub: u.nombre, uid: u.id, rol: u.rol, fac: u.fac, facultad: u.facultad, color: colorDe(u.fac), exp: Math.floor(Date.now() / 1000) + TOKEN_HORAS * 3600 }), horas: TOKEN_HORAS });
 
 /* ---------- límite de intentos de ingreso ---------- */
 const intentos = new Map(); // ip -> { n, hasta }
@@ -159,7 +177,13 @@ function leerCuerpo(req) {
   });
 }
 const ipDe = (req) => String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",").pop().trim();
-const usuario = () => db.prepare("SELECT nombre, hash FROM usuario WHERE id = 1").get();
+const hayUsuarios = () => !!db.prepare("SELECT 1 FROM usuarios LIMIT 1").get();
+const usuarioPorNombre = (n) => db.prepare("SELECT * FROM usuarios WHERE nombre = ? AND activo = 1").get(String(n || "").trim());
+const usuarioPorId = (id) => db.prepare("SELECT * FROM usuarios WHERE id = ?").get(id);
+/* Aislamiento por facultad: la clave que pide el navegador se traduce a la clave real del servidor */
+const prefijoFac = (s) => (s.fac === FAC_ORIGINAL ? "" : `fac:${s.fac}:`);
+const claveReal = (s, key) => `${prefijoFac(s)}${key}`;
+const claveVisible = (s, key) => key.slice(prefijoFac(s).length);
 
 /* ---------- servidor ---------- */
 const servidor = http.createServer(async (req, res) => {
@@ -170,53 +194,109 @@ const servidor = http.createServer(async (req, res) => {
 
     // públicas
     if (m === "GET" && (ruta === "/salud" || ruta === "/")) return enviar(res, 200, { ok: true });
-    if (m === "GET" && ruta === "/estado") return enviar(res, 200, { hayUsuario: !!usuario() });
+    if (m === "GET" && ruta === "/estado") return enviar(res, 200, { hayUsuario: hayUsuarios() });
     if (m === "POST" && ruta === "/configurar") {
-      if (usuario()) return enviar(res, 409, { error: "Ya hay una cuenta configurada." });
+      if (hayUsuarios()) return enviar(res, 409, { error: "Ya hay una cuenta configurada." });
       const { usuario: nombre, clave, claveInstalacion } = await leerCuerpo(req);
 if (process.env.CLAVE_INSTALACION && claveInstalacion !== process.env.CLAVE_INSTALACION) return enviar(res, 403, { error: "Clave de instalación incorrecta." });
       if (!nombre || String(nombre).trim().length < 3) return enviar(res, 400, { error: "El usuario debe tener al menos 3 caracteres." });
       if (!clave || String(clave).length < 8) return enviar(res, 400, { error: "La contraseña debe tener al menos 8 caracteres." });
-      db.prepare("INSERT INTO usuario (id, nombre, hash) VALUES (1, ?, ?)").run(String(nombre).trim(), hashClave(String(clave)));
-      return enviar(res, 200, emitirToken(String(nombre).trim()));
+      const r = db.prepare("INSERT INTO usuarios (nombre, hash, rol, fac, facultad, creado) VALUES (?, ?, 'admin', ?, ?, ?)").run(String(nombre).trim(), hashClave(String(clave)), FAC_ORIGINAL, NOMBRE_FAC_ORIGINAL, new Date().toISOString());
+      return enviar(res, 200, emitirToken(usuarioPorId(Number(r.lastInsertRowid))));
     }
     if (m === "POST" && ruta === "/login") {
       const ip = ipDe(req);
       if (bloqueado(ip)) return enviar(res, 429, { error: "Demasiados intentos. Espera 5 minutos." });
       const { usuario: nombre, clave } = await leerCuerpo(req);
-      const u = usuario();
-      if (!u || String(nombre || "").trim() !== u.nombre || !verificarClave(String(clave || ""), u.hash)) { falla(ip); return enviar(res, 401, { error: "Usuario o contraseña incorrectos." }); }
+      const u = usuarioPorNombre(nombre);
+      if (!u || !verificarClave(String(clave || ""), u.hash)) { falla(ip); return enviar(res, 401, { error: "Usuario o contraseña incorrectos." }); }
       intentos.delete(ip);
-      return enviar(res, 200, emitirToken(u.nombre));
+      return enviar(res, 200, emitirToken(u));
     }
 
     // protegidas
     const auth = String(req.headers.authorization || "");
-    const sesion = auth.startsWith("Bearer ") ? validarToken(auth.slice(7)) : null;
-    if (!sesion) return enviar(res, 401, { error: "Sesión no válida o vencida." });
+    let sesion = auth.startsWith("Bearer ") ? validarToken(auth.slice(7)) : null;
+    // La sesión debe corresponder a un usuario que siga activo (un token anterior a las facultades no trae uid)
+    const usuarioSesion = sesion && sesion.uid ? usuarioPorId(sesion.uid) : null;
+    if (!usuarioSesion || !usuarioSesion.activo) return enviar(res, 401, { error: "Sesión no válida o vencida." });
+    sesion = { ...sesion, rol: usuarioSesion.rol, fac: usuarioSesion.fac, facultad: usuarioSesion.facultad };
+    const esAdmin = sesion.rol === "admin";
 
     if (m === "POST" && ruta === "/cambiar-clave") {
       const { actual, nueva } = await leerCuerpo(req);
-      const u = usuario();
+      const u = usuarioSesion;
       if (!verificarClave(String(actual || ""), u.hash)) return enviar(res, 400, { error: "La contraseña actual no es correcta." });
       if (!nueva || String(nueva).length < 8) return enviar(res, 400, { error: "La contraseña nueva debe tener al menos 8 caracteres." });
-      db.prepare("UPDATE usuario SET hash = ? WHERE id = 1").run(hashClave(String(nueva)));
+      db.prepare("UPDATE usuarios SET hash = ? WHERE id = ?").run(hashClave(String(nueva)), u.id);
       return enviar(res, 200, { ok: true });
+    }
+
+    /* ---------- administración de usuarios (solo el administrador) ---------- */
+    if (ruta === "/yo" && m === "GET") return enviar(res, 200, { usuario: sesion.sub, rol: sesion.rol, fac: sesion.fac, facultad: sesion.facultad, color: colorDe(sesion.fac) });
+    if (ruta.startsWith("/usuarios")) {
+      if (!esAdmin) return enviar(res, 403, { error: "Solo el administrador puede gestionar usuarios." });
+      if (ruta === "/usuarios" && m === "GET") {
+        const filas = db.prepare("SELECT id, nombre, rol, fac, facultad, activo, creado FROM usuarios ORDER BY facultad, nombre").all();
+        return enviar(res, 200, { usuarios: filas.map((u) => ({ ...u, color: colorDe(u.fac) })) });
+      }
+      if (ruta === "/usuarios" && m === "POST") {
+        const { nombre, clave, facultad, color } = await leerCuerpo(req);
+        const n = String(nombre || "").trim(), fNombre = String(facultad || "").trim();
+        if (n.length < 3) return enviar(res, 400, { error: "El usuario debe tener al menos 3 caracteres." });
+        if (!clave || String(clave).length < 8) return enviar(res, 400, { error: "La contraseña debe tener al menos 8 caracteres." });
+        const fac = slugFacultad(fNombre);
+        if (fNombre.length < 3 || !fac) return enviar(res, 400, { error: "Escribe el nombre de la facultad." });
+        if (db.prepare("SELECT 1 FROM usuarios WHERE nombre = ?").get(n)) return enviar(res, 409, { error: "Ya existe un usuario con ese nombre." });
+        // Si la facultad ya existe se conserva su nombre oficial; si es nueva, se guarda como se escribió
+        const existente = db.prepare("SELECT facultad FROM usuarios WHERE fac = ? LIMIT 1").get(fac);
+        const nombreFac = fac === FAC_ORIGINAL ? NOMBRE_FAC_ORIGINAL : existente ? existente.facultad : fNombre;
+        if (color && !COLOR_HEX.test(String(color))) return enviar(res, 400, { error: "El color debe ser un código como #1A171B." });
+        const r = db.prepare("INSERT INTO usuarios (nombre, hash, rol, fac, facultad, creado) VALUES (?, ?, 'facultad', ?, ?, ?)").run(n, hashClave(String(clave)), fac, nombreFac, new Date().toISOString());
+        if (color && !existente && fac !== FAC_ORIGINAL) setMeta(`fac-color:${fac}`, String(color));
+        return enviar(res, 200, { id: Number(r.lastInsertRowid), nombre: n, fac, facultad: nombreFac, color: colorDe(fac) });
+      }
+      if (ruta === "/usuarios/color" && m === "POST") {
+        const { fac, color } = await leerCuerpo(req);
+        if (!COLOR_HEX.test(String(color || ""))) return enviar(res, 400, { error: "El color debe ser un código como #1A171B." });
+        if (!db.prepare("SELECT 1 FROM usuarios WHERE fac = ? LIMIT 1").get(String(fac || ""))) return enviar(res, 404, { error: "No existe esa facultad." });
+        setMeta(`fac-color:${fac}`, String(color));
+        return enviar(res, 200, { fac, color: String(color) });
+      }
+      const mu = ruta.match(/^\/usuarios\/(\d+)\/(clave|activo)$/);
+      if (mu && m === "POST") {
+        const objetivo = usuarioPorId(Number(mu[1]));
+        if (!objetivo) return enviar(res, 404, { error: "No existe ese usuario." });
+        const cuerpo = await leerCuerpo(req);
+        if (mu[2] === "clave") {
+          if (!cuerpo.nueva || String(cuerpo.nueva).length < 8) return enviar(res, 400, { error: "La contraseña nueva debe tener al menos 8 caracteres." });
+          db.prepare("UPDATE usuarios SET hash = ? WHERE id = ?").run(hashClave(String(cuerpo.nueva)), objetivo.id);
+        } else {
+          if (objetivo.id === usuarioSesion.id) return enviar(res, 400, { error: "No puedes desactivar tu propia cuenta." });
+          db.prepare("UPDATE usuarios SET activo = ? WHERE id = ?").run(cuerpo.activo ? 1 : 0, objetivo.id);
+        }
+        return enviar(res, 200, { ok: true });
+      }
+      return enviar(res, 404, { error: "Ruta no encontrada." });
     }
 
     if (ruta === "/storage" && m === "GET") {
       const prefijo = url.searchParams.get("prefix") || "";
-      const filas = db.prepare("SELECT key FROM kv WHERE key LIKE ? ESCAPE '\\' ORDER BY key").all(prefijo.replace(/[\\%_]/g, "\\$&") + "%");
-      return enviar(res, 200, { keys: filas.map((f) => f.key), prefix: prefijo });
+      const filas = db.prepare("SELECT key FROM kv WHERE key LIKE ? ESCAPE '\\' ORDER BY key").all((prefijoFac(sesion) + prefijo).replace(/[\\%_]/g, "\\$&") + "%");
+      // la facultad original no ve las claves que pertenecen a otras facultades
+      const propias = filas.map((f) => f.key).filter((k) => prefijoFac(sesion) || !k.startsWith("fac:"));
+      return enviar(res, 200, { keys: propias.map((k) => claveVisible(sesion, k)), prefix: prefijo });
     }
     const mk = ruta.match(/^\/storage\/(.+)$/);
     if (mk) {
          let key;
    try { key = decodeURIComponent(mk[1]); } catch (e) { return enviar(res, 400, { error: "Clave inválida." }); }
       if (key.length > 200) return enviar(res, 400, { error: "Clave demasiado larga." });
+      if (key.startsWith("fac:")) return enviar(res, 400, { error: "Clave inválida." });
+      key = claveReal(sesion, key);
       if (m === "GET") {
         const f = db.prepare("SELECT value FROM kv WHERE key = ?").get(key);
-        return f ? enviar(res, 200, { key, value: f.value }) : enviar(res, 404, { error: "No existe." });
+        return f ? enviar(res, 200, { key: claveVisible(sesion, key), value: f.value }) : enviar(res, 404, { error: "No existe." });
       }
       if (m === "PUT") {
         const { value } = await leerCuerpo(req);
@@ -230,18 +310,22 @@ if (process.env.CLAVE_INSTALACION && claveInstalacion !== process.env.CLAVE_INST
           db.prepare("INSERT INTO kv (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at").run(key, value, new Date().toISOString());
           db.exec("COMMIT");
         } catch (e) { db.exec("ROLLBACK"); throw e; }
-        return enviar(res, 200, { key });
+        return enviar(res, 200, { key: claveVisible(sesion, key) });
       }
       if (m === "DELETE") {
         const r = db.prepare("DELETE FROM kv WHERE key = ?").run(key);
-        return enviar(res, 200, { key, deleted: r.changes > 0 });
+        return enviar(res, 200, { key: claveVisible(sesion, key), deleted: r.changes > 0 });
       }
     }
 
     if (m === "GET" && ruta === "/respaldo") {
       const kv = {};
-      for (const f of db.prepare("SELECT key, value FROM kv").all()) kv[f.key] = f.value;
-      const nombre = `gops-respaldo-${new Date().toISOString().slice(0, 10)}.json`;
+      const todo = esAdmin && url.searchParams.get("todo") === "1"; // el administrador puede pedir el respaldo de todas las facultades
+      for (const f of db.prepare("SELECT key, value FROM kv").all()) {
+        if (todo) kv[f.key] = f.value;
+        else if (prefijoFac(sesion) ? f.key.startsWith(prefijoFac(sesion)) : !f.key.startsWith("fac:")) kv[claveVisible(sesion, f.key)] = f.value;
+      }
+      const nombre = `gops-respaldo-${todo ? "todas-" : ""}${new Date().toISOString().slice(0, 10)}.json`;
       return enviar(res, 200, { app: "GOPS", fecha: new Date().toISOString(), kv }, { "Content-Disposition": `attachment; filename="${nombre}"` });
     }
 

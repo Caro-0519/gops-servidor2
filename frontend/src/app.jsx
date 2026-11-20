@@ -21,11 +21,20 @@ const FONTS = `
 const TOKENS = `
 input,select,textarea{box-sizing:border-box;max-width:100%}
 :root{
-  --ink:#1B1740;
-  --ink-2:#4F3BC4;
+  --usb-orange:#EB8600;
+  --usb-orange-dark:#C97200;
+  --usb-orange-soft:#FDF0DC;
+  --usb-black:#1A171B;
+  --usb-gray:#C6C7C8;
+  --fac:#1A171B;
+  --fac-dark:#100E11;
+  --fac-2:#4A454C;
+  --fac-rgb:26,23,27;
+  --ink:#1A171B;
+  --ink-2:var(--fac);
   --ink-soft:#6A6785;
-  --brand:#5B45D6;
-  --brand-soft:#EFECFC;
+  --brand:var(--fac);
+  --brand-soft:#F1EFF2;
   --paper:#F5F5FA;
   --paper-raised:#FFFFFF;
   --line:#E9E8F2;
@@ -50,7 +59,7 @@ body,button,input,select,textarea{font-family:'Figtree',system-ui,sans-serif;}
 ::selection{background:var(--brand-soft); color:var(--ink);}
 details > summary{list-style:none;cursor:pointer;}
 details > summary::-webkit-details-marker{display:none;}
-details[open] > summary{border-color:var(--brand) !important;}
+details[open] > summary{border-color:var(--usb-orange) !important;}
 
 /* Tablas: encabezados sobrios, filas con respuesta al pasar el cursor */
 table{border-collapse:separate; border-spacing:0;}
@@ -64,8 +73,8 @@ button{transition:background-color .14s ease, border-color .14s ease, filter .14
 button:not(:disabled):hover{filter:brightness(0.96);}
 button:not(:disabled):active{transform:translateY(0.5px);}
 input:not([type=checkbox]):not([type=radio]), select, textarea{transition:border-color .14s ease, box-shadow .14s ease;}
-input:not([type=checkbox]):not([type=radio]):focus, select:focus, textarea:focus{outline:none; border-color:var(--brand) !important; box-shadow:0 0 0 3px rgba(91,69,214,0.16);}
-button:focus-visible, summary:focus-visible, a:focus-visible{outline:2px solid var(--brand); outline-offset:2px;}
+input:not([type=checkbox]):not([type=radio]):focus, select:focus, textarea:focus{outline:none; border-color:var(--brand) !important; box-shadow:0 0 0 3px rgba(235,134,0,0.28);}
+button:focus-visible, summary:focus-visible, a:focus-visible{outline:2px solid var(--usb-orange); outline-offset:2px;}
 input[type=checkbox]{accent-color:var(--brand); width:15px; height:15px;}
 *{scrollbar-width:thin; scrollbar-color:var(--line-strong) transparent;}
 
@@ -137,6 +146,12 @@ function idxEstado(tipo, estado) {
 /* ------------------------------------------------------------------ */
 const ARL_CLASES = ["I", "II", "III"]; // clases de riesgo que se usan en GOPS (contratistas docentes)
 const ARL_TARIFAS_DEFAULT = { I: 0.522, II: 1.044, III: 2.436, IV: 4.35, V: 6.96 };
+// Sesión (usuario y facultad) que publica el ingreso. La facultad original conserva los datos de ejemplo y del catálogo;
+// las demás facultades empiezan vacías, sin programas, coordinadores ni decana.
+const sesionGops = () => (typeof window !== "undefined" && window.__gopsSesion ? window.__gopsSesion() : null);
+const esFacultadNueva = () => { const s = sesionGops(); return !!s && s.fac !== "ingenieria"; };
+const nombreFacultad = () => (sesionGops() || {}).facultad || "Facultad de Ingeniería";
+
 const CONFIG_DEFAULT = {
   // Seguridad social de OPS: la norma (SMMLV, % y tarifas ARL) se configura POR AÑO en `normaSS`.
   arlClase: "I",
@@ -660,7 +675,7 @@ function AuditorView({ hallazgos, revisados, setRevisados, onOpen, notify }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <Banner arte="ajustes" desde="#0F766E" hasta="#5B45D6" titulo="Auditor de pagos y bonificaciones" subtitulo="Revisa los datos registrados antes de procesar un pago. Solo sugiere: la decisión es suya." />
+      <Banner arte="ajustes" titulo="Auditor de pagos y bonificaciones" subtitulo="Revisa los datos registrados antes de procesar un pago. Solo sugiere: la decisión es suya." />
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
         <KPI icon={AlertTriangle} label="Prioridad alta" value={cuenta("alta")} tone="coral" />
@@ -886,8 +901,8 @@ function Arte({ tipo, height = 150 }) {
     <g>
       {sombra}
       <rect x="52" y="118" width="136" height="22" rx="4" fill="#FFD166" /><rect x="52" y="118" width="136" height="5" rx="2" fill="rgba(255,255,255,0.55)" />
-      <rect x="64" y="96" width="116" height="22" rx="4" fill="#4CC9F0" /><rect x="64" y="96" width="116" height="5" rx="2" fill="rgba(255,255,255,0.55)" />
-      <rect x="58" y="74" width="124" height="22" rx="4" fill="#F72585" /><rect x="58" y="74" width="124" height="5" rx="2" fill="rgba(255,255,255,0.45)" />
+      <rect x="64" y="96" width="116" height="22" rx="4" fill="#C6C7C8" /><rect x="64" y="96" width="116" height="5" rx="2" fill="rgba(255,255,255,0.55)" />
+      <rect x="58" y="74" width="124" height="22" rx="4" fill="#EB8600" /><rect x="58" y="74" width="124" height="5" rx="2" fill="rgba(255,255,255,0.45)" />
       <path d="M86 56 v16 c0 10 68 10 68 0 v-16 l-34 14z" fill="#2B2270" />
       <polygon points="120,10 196,32 120,54 44,32" fill="#1B1740" />
       <polygon points="120,10 196,32 120,36 44,32" fill="rgba(255,255,255,0.12)" />
@@ -905,7 +920,7 @@ function Arte({ tipo, height = 150 }) {
       {[52, 66, 80, 94].map((y, i) => <rect key={y} x="90" y={y} width={i === 3 ? 52 : 84} height="6" rx="3" fill="#D9D7E8" />)}
       <circle cx="166" cy="112" r="22" fill="#14946A" /><circle cx="166" cy="112" r="17" fill="none" stroke="rgba(255,255,255,0.55)" strokeWidth="1.5" strokeDasharray="3 3" />
       <path d="M156 112 l7 7 14 -15" fill="none" stroke="#fff" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" />
-      <g transform="rotate(38 206 56)"><rect x="196" y="22" width="14" height="70" rx="4" fill="#FF8C42" /><polygon points="196,92 210,92 203,106" fill="#1B1740" /><rect x="196" y="22" width="14" height="10" rx="4" fill="#F72585" /></g>
+      <g transform="rotate(38 206 56)"><rect x="196" y="22" width="14" height="70" rx="4" fill="#FF8C42" /><polygon points="196,92 210,92 203,106" fill="#1B1740" /><rect x="196" y="22" width="14" height="10" rx="4" fill="#EB8600" /></g>
       {chispas}
     </g>
   );
@@ -924,10 +939,10 @@ function Arte({ tipo, height = 150 }) {
     <g>
       {sombra}
       <polygon points="130,12 214,52 46,52" fill="#fff" /><polygon points="130,12 214,52 130,52" fill="rgba(27,23,64,0.08)" />
-      <circle cx="130" cy="36" r="8" fill="#5B45D6" />
+      <circle cx="130" cy="36" r="8" fill="#EB8600" />
       {[64, 88, 112, 142, 166, 190].map((x) => <g key={x}><rect x={x - 6} y="60" width="12" height="62" rx="2" fill="#fff" /><rect x={x - 6} y="60" width="5" height="62" rx="2" fill="rgba(27,23,64,0.08)" /></g>)}
       <rect x="44" y="122" width="172" height="8" rx="2" fill="#fff" /><rect x="34" y="130" width="192" height="10" rx="3" fill="#FFD166" />
-      <path d="M130 12 v-8" stroke="#fff" strokeWidth="2.5" /><path d="M130 4 h16 l-4 5 4 5 h-16z" fill="#F72585" />
+      <path d="M130 12 v-8" stroke="#fff" strokeWidth="2.5" /><path d="M130 4 h16 l-4 5 4 5 h-16z" fill="#EB8600" />
       {chispas}
     </g>
   );
@@ -938,8 +953,8 @@ function Arte({ tipo, height = 150 }) {
       <rect x="40" y="26" width="150" height="24" rx="10" fill="#14946A" /><rect x="40" y="40" width="150" height="10" fill="#14946A" />
       {[0, 1, 2].map((r) => [0, 1, 2, 3].map((c) => <rect key={`${r}${c}`} x={48 + c * 35} y={58 + r * 24} width="30" height="16" rx="3" fill={r === 1 && c === 2 ? "#FFD166" : "#EDEBF7"} />))}
       <text x="52" y="43" fontSize="11" fontWeight="800" fill="#fff" fontFamily="Figtree, sans-serif">Excel</text>
-      <circle cx="206" cy="58" r="26" fill="#F72585" /><path d="M206 70 v-24 m-11 11 l11 -11 11 11" fill="none" stroke="#fff" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx="206" cy="112" r="20" fill="#4CC9F0" /><path d="M206 102 v20 m-10 -9 l10 10 10 -10" fill="none" stroke="#fff" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="206" cy="58" r="26" fill="#EB8600" /><path d="M206 70 v-24 m-11 11 l11 -11 11 11" fill="none" stroke="#fff" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="206" cy="112" r="20" fill="#C6C7C8" /><path d="M206 102 v20 m-10 -9 l10 10 10 -10" fill="none" stroke="#fff" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
       {chispas}
     </g>
   );
@@ -947,8 +962,8 @@ function Arte({ tipo, height = 150 }) {
     <g>
       {sombra}
       <circle cx="92" cy="76" r="44" fill="none" stroke="#fff" strokeWidth="14" strokeDasharray="13.4 13.4" />
-      <circle cx="92" cy="76" r="38" fill="#fff" /><circle cx="92" cy="76" r="15" fill="#5B45D6" />
-      {[[158, 40, 0.3, "#FFD166"], [158, 76, 0.7, "#4CC9F0"], [158, 112, 0.5, "#F72585"]].map(([x, y, p, c]) => (
+      <circle cx="92" cy="76" r="38" fill="#fff" /><circle cx="92" cy="76" r="15" fill="#EB8600" />
+      {[[158, 40, 0.3, "#FFD166"], [158, 76, 0.7, "#C6C7C8"], [158, 112, 0.5, "#EB8600"]].map(([x, y, p, c]) => (
         <g key={y}><rect x={x} y={y - 3} width="80" height="6" rx="3" fill="rgba(255,255,255,0.55)" /><rect x={x} y={y - 3} width={80 * p} height="6" rx="3" fill="#fff" /><circle cx={x + 80 * p} cy={y} r="9" fill={c} stroke="#fff" strokeWidth="3" /></g>
       ))}
       {chispas}
@@ -957,7 +972,7 @@ function Arte({ tipo, height = 150 }) {
   return <svg viewBox="0 0 260 150" height={height} style={{ display: "block" }} aria-hidden="true">{g}</svg>;
 }
 
-function Banner({ titulo, subtitulo, arte, desde = "#5B45D6", hasta = "#C026D3", children, grande = false }) {
+function Banner({ titulo, subtitulo, arte, desde = "var(--fac)", hasta = "var(--fac-2)", children, grande = false }) {
   return (
     <div className="ops-fade-in" style={{ position: "relative", overflow: "hidden", borderRadius: 26, padding: grande ? "32px 36px" : "24px 30px", color: "#fff", background: `linear-gradient(120deg, ${desde} 0%, ${hasta} 100%)`, boxShadow: "0 14px 34px rgba(27,23,64,0.18)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 20, minHeight: grande ? 190 : 128 }}>
       <div style={{ position: "absolute", width: 300, height: 300, borderRadius: 999, background: "rgba(255,255,255,0.10)", top: -120, right: 120 }} />
@@ -996,8 +1011,8 @@ function UrgTone(level) {
 }
 
 const KPI_COLORES = {
-  violet: ["#5B45D6", "#8B5CF6"], amber: ["#F59E0B", "#F97316"], coral: ["#EF4444", "#F43F5E"], fuchsia: ["#C026D3", "#EC4899"],
-  blue: ["#2563EB", "#38BDF8"], teal: ["#0D9488", "#2DD4BF"], indigo: ["#4338CA", "#6366F1"], green: ["#15803D", "#34D399"],
+  violet: ["var(--fac)", "var(--fac-2)"], amber: ["#EB8600", "#F5A63A"], coral: ["#B85C00", "#D9791A"], fuchsia: ["#2B272D", "#5A555D"],
+  blue: ["#6B6C6F", "#9A9B9E"], teal: ["#4A454C", "#76727A"], indigo: ["var(--fac-dark)", "var(--fac)"], green: ["#8A8B8E", "#B5B6B8"],
 };
 function KPI({ icon: Icon, label, value, tone }) {
   const [a, b] = KPI_COLORES[tone] || KPI_COLORES.violet;
@@ -1049,10 +1064,10 @@ const sectionTitle = { fontSize: 14, fontWeight: 600, color: "var(--ink)", margi
 /*  MAIN APP                                                            */
 /* ------------------------------------------------------------------ */
 export default function App() {
-  const [config, setConfig] = useState(CONFIG_DEFAULT);
+  const [config, setConfig] = useState(() => (esFacultadNueva() ? { ...CONFIG_DEFAULT, usuarioActual: sesionGops().usuario, decanaNombre: "", decanaCorreo: "" } : CONFIG_DEFAULT));
   const [tarifas, setTarifas] = useState(TARIFAS_DEFAULT);
-  const [programas, setProgramas] = useState(PROGRAMAS_DEFAULT);
-  const [records, setRecords] = useState(RECORDS_INICIALES);
+  const [programas, setProgramas] = useState(() => (esFacultadNueva() ? [] : PROGRAMAS_DEFAULT));
+  const [records, setRecords] = useState(() => (esFacultadNueva() ? [] : RECORDS_INICIALES));
   const [view, setView] = useState("dashboard");
   const [selected, setSelected] = useState(null);
   const [showNew, setShowNew] = useState(false);
@@ -1117,7 +1132,7 @@ export default function App() {
             let progs = data.programas;
             let yaMigrado = false;
             try { yaMigrado = localStorage.getItem("ops-migracion-edco-v1") === "1"; } catch (e) { /* sin acceso */ }
-            if (!yaMigrado && !progs.some(esEdco)) {
+            if (!yaMigrado && !esFacultadNueva() && !progs.some(esEdco)) {
               progs = [...progs, PROGRAMA_EDCO];
               setTimeout(() => notify("Se agregó el programa EDCO al catálogo (complétale PA, centro de costos y coordinador en Programas)"), 400);
             }
@@ -1442,7 +1457,7 @@ ${config.usuarioActual}`;
   ];
 
   return (
-    <div className="font-body" style={{ minHeight: "100vh", background: "radial-gradient(900px 420px at 85% -80px, rgba(192,38,211,0.10), transparent 70%), radial-gradient(700px 400px at 20% 0, rgba(91,69,214,0.08), transparent 70%), var(--paper)", color: "var(--ink)", display: "flex" }}>
+    <div className="font-body" style={{ minHeight: "100vh", background: "radial-gradient(900px 420px at 85% -80px, rgba(235,134,0,0.10), transparent 70%), radial-gradient(700px 400px at 20% 0, rgba(var(--fac-rgb),0.06), transparent 70%), var(--paper)", color: "var(--ink)", display: "flex" }}>
       <style>{FONTS}{TOKENS}</style>
 
       {/* BACKDROP (mobile) */}
@@ -1450,11 +1465,11 @@ ${config.usuarioActual}`;
 
       {/* SIDEBAR */}
       {!gestionPantallaCompleta && (
-        <aside className={`ops-sidebar${mobileOpen ? " mobile-open" : ""}`} style={{ width: sidebarCollapsed ? 76 : 220, flexShrink: 0, background: "linear-gradient(175deg, #2A1B6E 0%, #4B2FB8 55%, #8B2FC9 100%)", color: "#fff", padding: sidebarCollapsed ? "22px 12px" : "22px 16px", display: "flex", flexDirection: "column", gap: 24, overflow: "hidden" }}>
+        <aside className={`ops-sidebar${mobileOpen ? " mobile-open" : ""}`} style={{ width: sidebarCollapsed ? 76 : 220, flexShrink: 0, background: "linear-gradient(175deg, var(--fac-dark) 0%, var(--fac) 60%, var(--fac-2) 100%)", color: "#fff", padding: sidebarCollapsed ? "22px 12px" : "22px 16px", display: "flex", flexDirection: "column", gap: 24, overflow: "hidden" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
             {!sidebarCollapsed && (
               <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{ width: 38, height: 38, borderRadius: 12, background: "linear-gradient(135deg, #FFD166, #FF8C42)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: "0 6px 14px rgba(0,0,0,0.25)" }}><GraduationCap size={21} style={{ color: "#1B1740" }} /></div>
+                <div style={{ width: 38, height: 38, borderRadius: 12, background: "var(--usb-orange)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: "0 6px 14px rgba(0,0,0,0.25)" }}><GraduationCap size={21} style={{ color: "#1A171B" }} /></div>
                 <div style={{ minWidth: 0 }}>
                   <div className="font-display" style={{ fontSize: 20, fontWeight: 700, lineHeight: 1.1, whiteSpace: "nowrap", letterSpacing: 1 }}>GOPS</div>
                   <div style={{ fontSize: 11, opacity: 0.8, marginTop: 2, lineHeight: 1.2 }}>Gestión de OPS y Bonificaciones de Posgrados</div>
@@ -1476,15 +1491,15 @@ ${config.usuarioActual}`;
                 style={{
                   display: "flex", alignItems: "center", gap: 10, padding: sidebarCollapsed ? "10px 0" : "9px 10px", borderRadius: 9, border: "none", cursor: "pointer",
                   justifyContent: sidebarCollapsed ? "center" : "flex-start",
-                  background: view === item.id ? "#fff" : "transparent",
-                  color: view === item.id ? "#4B2FB8" : "rgba(255,255,255,0.82)", fontSize: 14, fontWeight: view === item.id ? 700 : 500, textAlign: "left", whiteSpace: "nowrap",
+                  background: view === item.id ? "var(--usb-orange)" : "transparent",
+                  color: view === item.id ? "#1A171B" : "rgba(255,255,255,0.82)", fontSize: 14, fontWeight: view === item.id ? 700 : 500, textAlign: "left", whiteSpace: "nowrap",
                 }}>
                 <item.icon size={16} style={{ flexShrink: 0 }} />{!sidebarCollapsed && item.label}
                 {!sidebarCollapsed && item.badge > 0 && <span style={{ marginLeft: "auto", background: "#EF4444", color: "#fff", borderRadius: 999, fontSize: 11, fontWeight: 700, padding: "1px 7px" }}>{item.badge}</span>}
               </button>
             ))}
           </nav>
-          <button onClick={() => setShowNew(true)} className="font-body" title={sidebarCollapsed ? "Nuevo registro" : undefined} style={{ marginTop: "auto", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, background: "linear-gradient(135deg, #FFD166, #FF8C42)", color: "#1B1740", border: "none", borderRadius: 12, padding: "12px 12px", fontSize: 13.5, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap", boxShadow: "0 8px 18px rgba(0,0,0,0.25)" }}>
+          <button onClick={() => setShowNew(true)} className="font-body" title={sidebarCollapsed ? "Nuevo registro" : undefined} style={{ marginTop: "auto", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, background: "var(--usb-orange)", color: "#1A171B", border: "none", borderRadius: 12, padding: "12px 12px", fontSize: 13.5, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap", boxShadow: "0 8px 18px rgba(0,0,0,0.25)" }}>
             <Plus size={15} /> {!sidebarCollapsed && "Nuevo registro"}
           </button>
           <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, opacity: 0.8, justifyContent: "center", whiteSpace: "nowrap" }}>
@@ -1596,7 +1611,7 @@ ${config.usuarioActual}`;
 /* ------------------------------------------------------------------ */
 /*  DASHBOARD                                                           */
 /* ------------------------------------------------------------------ */
-const CHART_COLORS = { activas: "#5B45D6", proximas: "#D9791A", finalizadas: "#14946A", vencidas: "#D6334A" };
+const CHART_COLORS = { activas: "#1A171B", proximas: "#D9791A", finalizadas: "#7A7B7E", vencidas: "#D6334A" };
 
 function claseEstadoOPS(r) {
   if (r.estado === "Pagado") return "finalizadas";
@@ -1662,7 +1677,7 @@ function DashboardView({ kpis, tareasHoy, records, onOpen, usuario }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 26 }}>
-      <Banner grande arte="academico" desde="#4B2FB8" hasta="#C026D3"
+      <Banner grande arte="academico"
         titulo={`Hola, ${usuario || "bienvenida"}`}
         subtitulo={kpis.finalizadosPendientes > 0
           ? `Tienes ${kpis.finalizadosPendientes} cursos finalizados por gestionar y ${kpis.proximos} por terminar esta semana.`
@@ -1748,7 +1763,7 @@ function DashboardView({ kpis, tareasHoy, records, onOpen, usuario }) {
                   <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: "var(--ink-soft)" }} axisLine={false} tickLine={false} />
                   <YAxis type="category" dataKey="programa" width={54} tick={{ fontSize: 11, fill: "var(--ink-soft)" }} axisLine={false} tickLine={false} />
                   <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid var(--line)" }} />
-                  <Bar dataKey="cantidad" radius={[0, 6, 6, 0]} barSize={14}>{programaData.map((d, i) => <Cell key={d.programa} fill={["#5B45D6", "#C026D3", "#0D9488", "#F59E0B", "#2563EB", "#EF4444", "#15803D", "#EC4899"][i % 8]} />)}</Bar>
+                  <Bar dataKey="cantidad" radius={[0, 6, 6, 0]} barSize={14}>{programaData.map((d, i) => <Cell key={d.programa} fill={["#1A171B", "#EB8600", "#7A7B7E", "#C6C7C8", "#4A454C", "#C97200", "#A9AAAD", "#F5A63A"][i % 8]} />)}</Bar>
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -1876,7 +1891,7 @@ function GestionView({ filtered, search, setSearch, fTipo, setFTipo, fEstado, se
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      {!pantallaCompleta && <Banner arte="contratos" desde="#2563EB" hasta="#7C3AED" titulo="OPS y Bonificaciones" subtitulo="Cada contrato y pago de tus docentes, del registro al pago." />}
+      {!pantallaCompleta && <Banner arte="contratos" titulo="OPS y Bonificaciones" subtitulo="Cada contrato y pago de tus docentes, del registro al pago." />}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
         <div style={{ fontSize: 14, color: "var(--ink-soft)", fontWeight: 600 }}>{filtered.length} registros</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
@@ -2063,7 +2078,7 @@ function BorradorPagosView({ items, onAdd, onUpdate, onDelete }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <Banner arte="pagos" desde="#0D9488" hasta="#2563EB" titulo="Borrador de pagos" subtitulo="Planificación rápida de OPS y bonificaciones pendientes de gestionar." />
+      <Banner arte="pagos" titulo="Borrador de pagos" subtitulo="Planificación rápida de OPS y bonificaciones pendientes de gestionar." />
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
         <button onClick={onAdd} className="font-body" style={{ display: "flex", alignItems: "center", gap: 7, background: "var(--brand)", color: "#fff", border: "none", borderRadius: 11, padding: "10px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
           <Plus size={15} /> Agregar registro
@@ -2178,7 +2193,7 @@ function ProgramasView({ programas, setProgramas, tarifas, notify }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <Banner arte="programas" desde="#4338CA" hasta="#0EA5E9" titulo="Catálogo de programas" subtitulo="Edita cualquier celda directamente. Al elegir un programa en un registro, estos datos se autocompletan." />
+      <Banner arte="programas" titulo="Catálogo de programas" subtitulo="Edita cualquier celda directamente. Al elegir un programa en un registro, estos datos se autocompletan." />
 
       <div style={{ ...cardStyle, padding: 0, overflowX: "auto" }}>
         <div style={{ padding: "14px 16px 4px" }}>
@@ -2314,7 +2329,7 @@ function ConfiguracionView({ config, setConfig, tarifas, setTarifas, programas, 
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <Banner arte="ajustes" desde="#334155" hasta="#7C3AED" titulo="Administración" subtitulo="Parámetros de cálculo, documentos, alertas, tarifas y plantillas de correo." />
+      <Banner arte="ajustes" titulo="Administración" subtitulo="Parámetros de cálculo, documentos, alertas, tarifas y plantillas de correo." />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <button onClick={() => { setConfig(borrador); notify("Configuración guardada"); }} style={{ background: "var(--brand)", color: "#fff", border: "none", borderRadius: 11, padding: "10px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
           Guardar cambios
@@ -3067,7 +3082,7 @@ function ImportarView({ records, setRecords, config, tarifas, programas, notify 
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <Banner arte="datos" desde="#EA580C" hasta="#DB2777" titulo="Importar / Exportar" subtitulo="Carga el Excel de los coordinadores o el calendario actual, y genera reportes en Excel." />
+      <Banner arte="datos" titulo="Importar / Exportar" subtitulo="Carga el Excel de los coordinadores o el calendario actual, y genera reportes en Excel." />
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
         <section style={cardStyle}>
@@ -3186,7 +3201,6 @@ function ImportarView({ records, setRecords, config, tarifas, programas, notify 
 /* ------------------------------------------------------------------ */
 // Descarga el formato de bonificación PA.GH.F40 diligenciado; el docente solo agrega su firma.
 const FORMATO_BON_DEFECTO = { cargo: "Docente", dedicacion: "HC" };
-const UNIDAD_ADSCRITA = "Facultad de Ingeniería";
 function FormatoBonificacionModal({ rec, prog, onClose, onGuardar, notify }) {
   const guardado = rec.formatoBon || {};
   let recordados = {};
@@ -3204,7 +3218,7 @@ function FormatoBonificacionModal({ rec, prog, onClose, onGuardar, notify }) {
     try {
       const blob = await generarFormatoBonificacion({
         nombre: rec.docente, identificacion: f.identificacion, cargo: f.cargo, dedicacion: f.dedicacion,
-        programa: rec.nombrePrograma || prog.nombre, unidad: UNIDAD_ADSCRITA, centroCostos: prog.cc && prog.cc !== "—" ? prog.cc : "",
+        programa: rec.nombrePrograma || prog.nombre, unidad: nombreFacultad(), centroCostos: prog.cc && prog.cc !== "—" ? prog.cc : "",
         modulo: rec.modulo, horas: rec.horas, valorHora: rec.valorHora, fechaInicio: rec.fechaInicio, fechaFin: rec.fechaFin, observaciones: f.observaciones,
       });
       const url = URL.createObjectURL(blob);
@@ -3238,7 +3252,7 @@ function FormatoBonificacionModal({ rec, prog, onClose, onGuardar, notify }) {
           <Labeled label="Observaciones" span2><textarea value={f.observaciones} onChange={set("observaciones")} rows={2} style={{ ...inputStyle, resize: "vertical" }} /></Labeled>
         </div>
         <div style={{ marginTop: 12, fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.5, background: "var(--paper-raised)", border: "1px solid var(--line)", borderRadius: 10, padding: 10 }}>
-          Se llenan solos: unidad adscrita (Facultad de Ingeniería), programa ({rec.nombrePrograma || prog.nombre}), centro de costos ({prog.cc && prog.cc !== "—" ? prog.cc : "sin definir"}), módulo, {rec.horas} horas, valor hora {COP(rec.valorHora)}, valor de la bonificación {COP(valorTotal(rec))} y fechas.
+          Se llenan solos: unidad adscrita ({nombreFacultad()}), programa ({rec.nombrePrograma || prog.nombre}), centro de costos ({prog.cc && prog.cc !== "—" ? prog.cc : "sin definir"}), módulo, {rec.horas} horas, valor hora {COP(rec.valorHora)}, valor de la bonificación {COP(valorTotal(rec))} y fechas.
         </div>
         {!f.identificacion.trim() && <div style={{ marginTop: 8, fontSize: 12, color: "var(--brick)" }}>Falta la cédula: el formato saldrá con ese campo en blanco.</div>}
         <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
