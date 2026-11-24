@@ -3388,7 +3388,7 @@ function DetailDrawer({ rec, config, programas, hallazgos = [], onIrAuditor, onC
                   <Mail size={14} /> Pedir al docente diligenciar formato de bonificación
                 </button>
               )}
-              {(daysDiff(rec.fechaFin) <= 0 || idx >= (rec.tipo === "OPS" ? 4 : 3)) && rec.estado !== "Pagado" && (
+              {rec.estado !== "Pagado" && (
                 <button onClick={() => setEmailDraft(emailDecanaTemplate(rec, config, programas))} className="font-body" style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--paper-raised)", color: "var(--ink)", border: "1.5px solid var(--ink)", borderRadius: 8, padding: "9px 14px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
                   <Mail size={14} /> Enviar a la Decana para aprobación y nómina
                 </button>
