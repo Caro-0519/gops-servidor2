@@ -130,7 +130,7 @@ const PROGRAMA_EDCO = PROGRAMAS_DEFAULT[PROGRAMAS_DEFAULT.length - 1];
 
 const ESTADOS = {
   OPS: ["OPS Solicitada", "OPS Elaborada", "Documentos Solicitados", "Documentos Recibidos", "Visto Bueno Director/Coordinador", "Visto Bueno Decanatura", "Enviado a OPS", "Pendiente de pago", "Pagado"],
-  BONIFICACION: ["Bonificación registrada", "Curso finalizado", "Visto Bueno solicitado", "Visto Bueno recibido", "Enviado para pago", "Pagado"],
+  BONIFICACION: ["Bonificación registrada", "Curso finalizado", "Visto Bueno solicitado", "Visto Bueno recibido", "Visto Bueno Decanatura", "Enviado para pago", "Pagado"],
 };
 // Posición de un estado en su secuencia. Tolera mayúsculas, tildes y espacios (p. ej. registros importados de Excel).
 function idxEstado(tipo, estado) {
@@ -3388,7 +3388,7 @@ function DetailDrawer({ rec, config, programas, hallazgos = [], onIrAuditor, onC
                   <Mail size={14} /> Pedir al docente diligenciar formato de bonificación
                 </button>
               )}
-              {daysDiff(rec.fechaFin) <= 0 && (
+              {(daysDiff(rec.fechaFin) <= 0 || idx >= (rec.tipo === "OPS" ? 4 : 3)) && rec.estado !== "Pagado" && (
                 <button onClick={() => setEmailDraft(emailDecanaTemplate(rec, config, programas))} className="font-body" style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--paper-raised)", color: "var(--ink)", border: "1.5px solid var(--ink)", borderRadius: 8, padding: "9px 14px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
                   <Mail size={14} /> Enviar a la Decana para aprobación y nómina
                 </button>
