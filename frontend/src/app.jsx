@@ -1417,24 +1417,14 @@ export default function App() {
     if (seleccionados.length === 0) return;
     const mes = HOY.toLocaleDateString("es-CO", { month: "long", year: "numeric" });
     const ordenados = [...seleccionados].sort((a, b) => a.docente.localeCompare(b.docente));
-    const lineas = ordenados.map((r, i) => `${i + 1}. ${r.docente} — ${r.nombrePrograma || r.programa} — ${r.modulo} — Finaliza: ${fmtDate(r.fechaFin)} — ${COP(valorTotal(r))}`).join("\n");
+    const filas = ordenados.map((r, i) => ({ n: i + 1, docente: r.docente, identificacion: r.identificacion || "", programa: r.nombrePrograma || r.programa, modulo: r.modulo, fin: fmtDate(r.fechaFin), valor: COP(valorTotal(r)) }));
     const total = ordenados.reduce((acc, r) => acc + valorTotal(r), 0);
     const soloBonif = ordenados.every((r) => r.tipo === "BONIFICACION");
     const tipoTexto = soloBonif ? "bonificaciones" : "OPS y bonificaciones";
     const asunto = `Relación de ${tipoTexto} – ${mes} – visto bueno y envío a nómina`;
-    const cuerpo = `Buen día, Decana ${config.decanaNombre}.
-
-De acuerdo con el visto bueno ya emitido por los coordinadores de cada programa, envío la relación de ${tipoTexto} correspondientes a ${mes} para su aprobación y envío a nómina:
-
-${lineas}
-
-Total ${ordenados.length} registro${ordenados.length === 1 ? "" : "s"}: ${COP(total)}
-
-Agradezco su aprobación para continuar con el proceso.
-
-Cordialmente,
-${config.usuarioActual}`;
-    setMasivoDraft({ asunto, cuerpo, para: config.decanaCorreo });
+    const intro = `Buen día, Decana ${config.decanaNombre}.\n\nDe acuerdo con el visto bueno ya emitido por los coordinadores de cada programa, envío la relación de ${tipoTexto} correspondientes a ${mes} para su aprobación y envío a nómina:`;
+    const cierre = `Agradezco su aprobación para continuar con el proceso.\n\nCordialmente,\n${config.usuarioActual}`;
+    setMasivoDraft({ asunto, intro, cierre, filas, total: COP(total), para: config.decanaCorreo });
   }
 
   if (!ready) {
@@ -1556,7 +1546,7 @@ ${config.usuarioActual}`;
           setEmailDraft={setEmailDraft}
           onSend={() => { notify("Se intentó abrir tu app de correo"); setEmailDraft(null); }}
           onDraft={() => notify("Borrador guardado")}
-          onCopy={(ok) => notify(ok ? "Mensaje copiado al portapapeles" : "No se pudo copiar automáticamente: selecciona el texto y cópialo manualmente")}
+          onCopy={(ok) => notify(ok ? "Tabla copiada: pégala en el correo con Ctrl+V" : "No se pudo copiar automáticamente")}
         />
       )}
 
@@ -1594,7 +1584,7 @@ ${config.usuarioActual}`;
           setDraft={setMasivoDraft}
           onClose={() => setMasivoDraft(null)}
           onSend={() => { notify("Se intentó abrir tu app de correo"); setMasivoDraft(null); }}
-          onCopy={(ok) => notify(ok ? "Mensaje copiado al portapapeles" : "No se pudo copiar automáticamente: selecciona el texto y cópialo manualmente")}
+          onCopy={(ok) => notify(ok ? "Tabla copiada: pégala en el correo con Ctrl+V" : "No se pudo copiar automáticamente")}
         />
       )}
 
@@ -3819,47 +3809,69 @@ function RevisionDocumentosModal({ rec, config, programas, onClose, onUpdateDoc,
   );
 }
 
+const escHtml = (x) => String(x == null ? "" : x).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const COLS_MASIVO = [["n", "N°"], ["docente", "Docente"], ["identificacion", "ID / Documento"], ["programa", "Programa"], ["modulo", "Módulo"], ["fin", "Finaliza"], ["valor", "Valor"]];
+// Correo con tabla real: se copia como HTML para pegarlo en Outlook (un enlace mailto solo admite texto plano).
+function masivoHtml(d) {
+  const p = (t) => String(t).split("\n").map((l) => `<p style="margin:0 0 6px 0;font-family:Calibri,Arial,sans-serif;font-size:11pt">${escHtml(l) || "&nbsp;"}</p>`).join("");
+  const th = COLS_MASIVO.map(([, t]) => `<th style="border:1px solid #888;background:#E7E6E6;padding:4px 8px;text-align:left">${t}</th>`).join("");
+  const tr = d.filas.map((f) => `<tr>${COLS_MASIVO.map(([k]) => `<td style="border:1px solid #888;padding:4px 8px;${k === "valor" ? "text-align:right;white-space:nowrap" : ""}">${escHtml(f[k])}</td>`).join("")}</tr>`).join("");
+  const tot = `<tr><td colspan="6" style="border:1px solid #888;padding:4px 8px;text-align:right"><b>Total ${d.filas.length} registro${d.filas.length === 1 ? "" : "s"}</b></td><td style="border:1px solid #888;padding:4px 8px;text-align:right;white-space:nowrap"><b>${escHtml(d.total)}</b></td></tr>`;
+  return `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt">${p(d.intro)}<table style="border-collapse:collapse;font-family:Calibri,Arial,sans-serif;font-size:10pt;margin:8px 0 12px 0"><thead><tr>${th}</tr></thead><tbody>${tr}${tot}</tbody></table>${p(d.cierre)}</div>`;
+}
+function masivoTexto(d) {
+  return `${d.intro}\n\n${d.filas.map((f) => COLS_MASIVO.map(([k]) => f[k]).join(" | ")).join("\n")}\nTotal ${d.filas.length}: ${d.total}\n\n${d.cierre}`;
+}
+async function copiarHtml(html, texto) {
+  try {
+    if (navigator.clipboard && window.ClipboardItem && window.isSecureContext) {
+      await navigator.clipboard.write([new ClipboardItem({ "text/html": new Blob([html], { type: "text/html" }), "text/plain": new Blob([texto], { type: "text/plain" }) })]);
+      return true;
+    }
+  } catch (e) { /* seguimos al respaldo */ }
+  try {
+    const div = document.createElement("div");
+    div.innerHTML = html; div.style.position = "fixed"; div.style.left = "-9999px";
+    document.body.appendChild(div);
+    const r = document.createRange(); r.selectNodeContents(div);
+    const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    const ok = document.execCommand("copy");
+    sel.removeAllRanges(); document.body.removeChild(div);
+    return ok;
+  } catch (e) { return false; }
+}
+
 function MasivoModal({ draft, setDraft, onClose, onSend, onCopy }) {
+  const html = masivoHtml(draft);
+  const mailto = `mailto:${encodeURIComponent(draft.para)}?subject=${encodeURIComponent(draft.asunto)}`;
+  const web = `https://outlook.office.com/mail/deeplink/compose?to=${encodeURIComponent(draft.para || "")}&subject=${encodeURIComponent(draft.asunto || "")}`;
+  const btn = { flex: 1, border: "none", borderRadius: 8, padding: "10px 12px", fontSize: 13, fontWeight: 700, cursor: "pointer", textAlign: "center", textDecoration: "none", display: "inline-block", color: "#fff" };
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 75, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(27,23,64,0.4)" }} />
-      <div className="font-body" style={{ position: "relative", background: "var(--paper)", borderRadius: 16, padding: 24, width: 620, maxWidth: "92vw", maxHeight: "88vh", overflowY: "auto" }}>
+      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(26,23,27,0.45)" }} />
+      <div className="font-body" style={{ position: "relative", background: "var(--paper)", borderRadius: 16, padding: 24, width: 820, maxWidth: "94vw", maxHeight: "90vh", overflowY: "auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
           <span className="font-display" style={{ fontSize: 19, fontWeight: 600 }}>Correo consolidado para la Decana</span>
           <button onClick={onClose} style={{ background: "var(--paper-raised)", border: "1px solid var(--line)", borderRadius: 999, width: 30, height: 30, cursor: "pointer" }}><X size={15} /></button>
         </div>
         <div style={{ fontSize: 11.5, color: "var(--ink-soft)", marginBottom: 10 }}>Para: {draft.para}</div>
-        <input value={draft.asunto} onChange={(e) => setDraft({ ...draft, asunto: e.target.value })} className="font-body" style={{ width: "100%", fontSize: 13, fontWeight: 600, border: "1px solid var(--line-strong)", borderRadius: 8, padding: "8px 10px", marginBottom: 10 }} />
-        <textarea value={draft.cuerpo} onChange={(e) => setDraft({ ...draft, cuerpo: e.target.value })} rows={14} className="font-mono" style={{ width: "100%", fontSize: 12, border: "1px solid var(--line-strong)", borderRadius: 8, padding: 10, resize: "vertical" }} />
-        <div style={{ fontSize: 11, color: "var(--ink-soft)", margin: "8px 0" }}>Puedes editar la lista antes de enviarlo. "Enviar correo" abre Outlook de escritorio; si no lo tienes, usa "Outlook web". Si tampoco funciona, usa "Copiar mensaje" y pégalo tú mismo.</div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <a href={`mailto:${encodeURIComponent(draft.para)}?subject=${encodeURIComponent(draft.asunto)}&body=${encodeURIComponent(draft.cuerpo)}`} onClick={onSend}
-            style={{ flex: 1, background: "var(--moss)", color: "#fff", border: "none", borderRadius: 8, padding: "10px 12px", fontSize: 13, fontWeight: 700, cursor: "pointer", textAlign: "center", textDecoration: "none", display: "inline-block" }}>
-            Enviar correo
-          </a>
-          <a href={outlookWebUrl(draft)} target="_blank" rel="noopener noreferrer"
-            style={{ flex: 1, background: "#0F6CBD", color: "#fff", border: "none", borderRadius: 8, padding: "10px 12px", fontSize: 13, fontWeight: 700, cursor: "pointer", textAlign: "center", textDecoration: "none", display: "inline-block" }}>
-            Outlook web
-          </a>
-          <button onClick={async () => {
-            const texto = `Para: ${draft.para}\nAsunto: ${draft.asunto}\n\n${draft.cuerpo}`;
-            let ok = false;
-            try {
-              if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(texto); ok = true; }
-            } catch (e) { /* seguimos al respaldo */ }
-            if (!ok) {
-              try {
-                const ta = document.createElement("textarea");
-                ta.value = texto; ta.style.position = "fixed"; ta.style.left = "-9999px";
-                document.body.appendChild(ta); ta.focus(); ta.select();
-                ok = document.execCommand("copy");
-                document.body.removeChild(ta);
-              } catch (e) { /* sin soporte de copiado automático */ }
-            }
-            onCopy(ok);
-          }} style={{ flex: 1, background: "var(--paper-raised)", border: "1px solid var(--line-strong)", borderRadius: 8, padding: "10px 12px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-            Copiar mensaje
-          </button>
+        <input value={draft.asunto} onChange={(e) => setDraft({ ...draft, asunto: e.target.value })} className="font-body" style={{ width: "100%", fontSize: 13, fontWeight: 600, border: "1px solid var(--line-strong)", borderRadius: 8, padding: "8px 10px", marginBottom: 8, boxSizing: "border-box" }} />
+        <textarea value={draft.intro} onChange={(e) => setDraft({ ...draft, intro: e.target.value })} rows={5} className="font-body" style={{ width: "100%", fontSize: 12.5, border: "1px solid var(--line-strong)", borderRadius: 8, padding: "8px 10px", boxSizing: "border-box", resize: "vertical" }} />
+        <div style={{ overflowX: "auto", margin: "10px 0" }}>
+          <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
+            <thead><tr>{COLS_MASIVO.map(([k, t]) => <th key={k} style={{ border: "1px solid #999", background: "#E7E6E6", padding: "5px 8px", textAlign: "left" }}>{t}</th>)}</tr></thead>
+            <tbody>
+              {draft.filas.map((f, i) => <tr key={i}>{COLS_MASIVO.map(([k]) => <td key={k} style={{ border: "1px solid #999", padding: "5px 8px", textAlign: k === "valor" ? "right" : "left", whiteSpace: k === "valor" ? "nowrap" : "normal" }}>{f[k]}</td>)}</tr>)}
+              <tr><td colSpan={6} style={{ border: "1px solid #999", padding: "5px 8px", textAlign: "right", fontWeight: 700 }}>Total {draft.filas.length} registro{draft.filas.length === 1 ? "" : "s"}</td><td style={{ border: "1px solid #999", padding: "5px 8px", textAlign: "right", fontWeight: 700, whiteSpace: "nowrap" }}>{draft.total}</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <textarea value={draft.cierre} onChange={(e) => setDraft({ ...draft, cierre: e.target.value })} rows={4} className="font-body" style={{ width: "100%", fontSize: 12.5, border: "1px solid var(--line-strong)", borderRadius: 8, padding: "8px 10px", boxSizing: "border-box", resize: "vertical" }} />
+        <div style={{ fontSize: 11.5, color: "var(--ink-soft)", margin: "8px 0" }}>Para que la tabla llegue como tabla: pulsa <b>Copiar y abrir Outlook web</b> (o <b>Copiar tabla</b> y abre tu Outlook), y en el mensaje nuevo pega con <b>Ctrl+V</b>. Los enlaces de correo solo admiten texto simple, por eso la tabla se pega.</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button onClick={async () => { const ok = await copiarHtml(html, masivoTexto(draft)); onCopy(ok); if (ok) window.open(web, "_blank", "noopener"); }} style={{ ...btn, background: "#EB8600", color: "#1A171B" }}>Copiar y abrir Outlook web</button>
+          <button onClick={async () => onCopy(await copiarHtml(html, masivoTexto(draft)))} style={{ ...btn, background: "var(--paper-raised)", color: "var(--ink)", border: "1px solid var(--line-strong)" }}>Copiar tabla</button>
+          <a href={mailto} onClick={onSend} style={{ ...btn, background: "#1A171B" }}>Abrir Outlook de escritorio</a>
         </div>
       </div>
     </div>
