@@ -368,6 +368,8 @@ const RECORDS_INICIALES = [
 /*  HELPERS                                                             */
 /* ------------------------------------------------------------------ */
 const COP = (n) => n == null ? "—" : new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(n);
+const hoyLocal = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+const mesDePago = (iso) => { if (!iso) return ""; const t = new Date(iso + "T00:00:00").toLocaleDateString("es-CO", { month: "long", year: "numeric" }); return t.charAt(0).toUpperCase() + t.slice(1); };
 const fmtDate = (s) => s ? new Date(s + "T00:00:00").toLocaleDateString("es-CO", { day: "2-digit", month: "short", year: "numeric" }) : "—";
 const daysDiff = (s) => Math.round((new Date(s + "T00:00:00") - HOY) / 86400000);
 const valorTotal = (rec) => rec.horas * rec.valorHora;
@@ -1353,15 +1355,20 @@ export default function App() {
       const seq = ESTADOS[r.tipo];
       const i = idxEstado(r.tipo, r.estado);
       const next = i < 0 ? seq[0] : i < seq.length - 1 ? seq[i + 1] : r.estado;
-      return { ...r, estado: next, _v: Date.now() };
+      return { ...r, estado: next, ...(next === "Pagado" && r.estado !== "Pagado" ? { fechaPago: r.fechaPago || hoyLocal() } : {}), _v: Date.now() };
     }));
     setSelected((s) => {
       if (!s || s.id !== recId) return s;
       const seq = ESTADOS[s.tipo];
       const i = idxEstado(s.tipo, s.estado);
       const next = i < 0 ? seq[0] : i < seq.length - 1 ? seq[i + 1] : s.estado;
-      return { ...s, estado: next, _v: Date.now() };
+      return { ...s, estado: next, ...(next === "Pagado" && s.estado !== "Pagado" ? { fechaPago: s.fechaPago || hoyLocal() } : {}), _v: Date.now() };
     });
+  }
+
+  function cambiarFechaPago(recId, fecha) {
+    setRecords((rs) => rs.map((r) => r.id === recId ? { ...r, fechaPago: fecha, _v: Date.now() } : r));
+    setSelected((s) => s && s.id === recId ? { ...s, fechaPago: fecha, _v: Date.now() } : s);
   }
 
   function retrocederEstado(recId) {
@@ -1370,14 +1377,14 @@ export default function App() {
       const seq = ESTADOS[r.tipo];
       const i = idxEstado(r.tipo, r.estado);
       const prev = i > 0 ? seq[i - 1] : r.estado;
-      return { ...r, estado: prev, _v: Date.now() };
+      return { ...r, estado: prev, ...(r.estado === "Pagado" ? { fechaPago: "" } : {}), _v: Date.now() };
     }));
     setSelected((s) => {
       if (!s || s.id !== recId) return s;
       const seq = ESTADOS[s.tipo];
       const i = idxEstado(s.tipo, s.estado);
       const prev = i > 0 ? seq[i - 1] : s.estado;
-      return { ...s, estado: prev, _v: Date.now() };
+      return { ...s, estado: prev, ...(s.estado === "Pagado" ? { fechaPago: "" } : {}), _v: Date.now() };
     });
   }
 
@@ -1538,6 +1545,7 @@ export default function App() {
           onUpdateDoc={updateDoc}
           onAdvance={advanceEstado}
           onRetroceder={retrocederEstado}
+          onFechaPago={cambiarFechaPago}
           onEdit={(rec) => { setSelected(null); setEmailDraft(null); setEditing(rec); }}
           onDelete={deleteRecord}
           onGuardarFormato={(id, d) => setRecords((rs) => rs.map((r) => r.id === id ? { ...r, identificacion: d.identificacion || r.identificacion || "", formatoBon: d, _v: Date.now() } : r))}
@@ -1997,7 +2005,7 @@ function GestionView({ filtered, search, setSearch, fTipo, setFTipo, fEstado, se
                   <td style={{ ...tdStyle, color: "var(--ink-soft)", minWidth: 210 }} onClick={() => onOpen(r)}>{r.modulo}</td>
                   <td style={{ ...tdStyle, whiteSpace: "nowrap" }} onClick={() => onOpen(r)}>{fmtDate(r.fechaInicio)}</td>
                   <td style={{ ...tdStyle, whiteSpace: "nowrap" }} onClick={() => onOpen(r)}>{fmtDate(r.fechaFin)}<div><Pill tone={UrgTone(u.level)}>{u.label}</Pill></div></td>
-                  <td style={{ ...tdStyle, fontWeight: pagado || enviadoPago ? 700 : 400, color: pagado ? "var(--moss)" : enviadoPago ? "#C2610A" : "var(--ink)" }} onClick={() => onOpen(r)}>{pagado && <CheckCircle2 size={13} style={{ verticalAlign: "-2px", marginRight: 4 }} />}{r.estado}</td>
+                  <td style={{ ...tdStyle, fontWeight: pagado || enviadoPago ? 700 : 400, color: pagado ? "var(--moss)" : enviadoPago ? "#C2610A" : "var(--ink)" }} onClick={() => onOpen(r)}>{pagado && <CheckCircle2 size={13} style={{ verticalAlign: "-2px", marginRight: 4 }} />}{r.estado}{pagado && r.fechaPago && <div style={{ fontSize: 10.5, fontWeight: 600 }}>{mesDePago(r.fechaPago)}</div>}</td>
                   <td className="font-mono" style={{ ...tdStyle, whiteSpace: "nowrap" }} onClick={() => onOpen(r)}>{COP(valorTotal(r))}</td>
                   <td style={tdStyle} onClick={() => onOpen(r)}>{pct == null ? "—" : <span style={{ color: pct === 100 ? "var(--moss)" : "var(--amber)", fontWeight: 600 }}>{pct}%</span>}</td>
                 </tr>
@@ -3055,6 +3063,8 @@ function ImportarView({ records, setRecords, config, tarifas, programas, notify 
         "Valor hora": r.valorHora,
         Total: valorTotal(r),
         Estado: r.estado,
+        "Fecha de pago": r.estado === "Pagado" ? (r.fechaPago || "") : "",
+        "Mes de pago": r.estado === "Pagado" ? mesDePago(r.fechaPago) : "",
         "Documentos completos": r.documentos ? `${Object.values(r.documentos).filter((v) => v === "Recibido" || v === "No aplica").length}/${Object.values(r.documentos).length}` : "N/A",
         Actualizador: r.actualizador,
       };
@@ -3254,7 +3264,7 @@ function FormatoBonificacionModal({ rec, prog, onClose, onGuardar, notify }) {
   );
 }
 
-function DetailDrawer({ rec, config, programas, hallazgos = [], onIrAuditor, onClose, onUpdateDoc, onAdvance, onRetroceder, onEdit, onDelete, onGuardarFormato, notify, emailDraft, setEmailDraft, onSend, onDraft, onCopy }) {
+function DetailDrawer({ rec, config, programas, hallazgos = [], onIrAuditor, onClose, onUpdateDoc, onAdvance, onRetroceder, onFechaPago, onEdit, onDelete, onGuardarFormato, notify, emailDraft, setEmailDraft, onSend, onDraft, onCopy }) {
   const prog = programas.find((p) => p.sigla === rec.programa) || { sigla: rec.programa, nombre: rec.programa, tipo: "", pa: "—", cc: "—", coordinador: "—", correo: "—" };
   const u = urgencia(rec);
   const seq = ESTADOS[rec.tipo];
@@ -3299,6 +3309,16 @@ function DetailDrawer({ rec, config, programas, hallazgos = [], onIrAuditor, onC
           <Field label="Fecha inicio" value={fmtDate(rec.fechaInicio)} />
           <Field label="Fecha fin" value={fmtDate(rec.fechaFin)} />
           <Field label="ID o documento docente" value={rec.identificacion || "—"} span2 />
+          {rec.estado === "Pagado" && (
+            <div style={{ gridColumn: "1 / -1", background: "var(--moss-soft)", border: "1px solid var(--moss)", borderRadius: 10, padding: 12 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--moss)", marginBottom: 6 }}>Evidencia de pago</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <input type="date" value={rec.fechaPago || ""} onChange={(e) => onFechaPago(rec.id, e.target.value)} style={{ ...inputStyle, width: 170 }} />
+                <span style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>{rec.fechaPago ? `Pagado en ${mesDePago(rec.fechaPago)}` : "Sin fecha de pago: regístrala"}</span>
+              </div>
+              <div style={{ fontSize: 11, color: "var(--ink-soft)", marginTop: 6 }}>La fecha se guardó automáticamente al marcar el registro como Pagado. Puedes corregirla si el pago fue en otra fecha.</div>
+            </div>
+          )}
           <Field label="Horas" value={rec.horas} />
           <Field label="Valor hora" value={COP(rec.valorHora)} />
           <Field label="Valor total" value={COP(valorTotal(rec))} mono />
